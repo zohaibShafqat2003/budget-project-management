@@ -45,203 +45,65 @@ export interface Task {
 export const tasksApi = {
   // Get all tasks with optional filters
   getAll: async (filters: Record<string, any> = {}): Promise<Task[]> => {
-    try {
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest(`/tasks${buildQueryString(filters)}`)
-      );
-      
-      // Handle potential response formats:
-      // 1. Direct array of tasks
-      // 2. { data: Task[] } format
-      // 3. { success: true, data: Task[] } format
-      
-      if (Array.isArray(response)) {
-        return response;
-      } else if (response && response.data) {
-        return Array.isArray(response.data) ? response.data : [];
-      } else {
-        console.warn('Unexpected response format from tasks API:', response);
-        return [];
-      }
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-      return []; // Return empty array instead of throwing to avoid breaking UI
-    }
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/tasks${buildQueryString(filters)}`)
+    );
   },
   
   // Get tasks for a specific project
   getByProject: async (projectId: string, filters: Record<string, any> = {}): Promise<Task[]> => {
-    try {
-      const allFilters = { ...filters, projectId };
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest(`/tasks${buildQueryString(allFilters)}`)
-      );
-      
-      if (Array.isArray(response)) {
-        return response;
-      } else if (response && response.data) {
-        return Array.isArray(response.data) ? response.data : [];
-      } else {
-        console.warn('Unexpected response format from tasks API:', response);
-        return [];
-      }
-    } catch (error) {
-      console.error(`Error fetching tasks for project ${projectId}:`, error);
-      return [];
-    }
+    const allFilters = { ...filters, projectId };
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/tasks${buildQueryString(allFilters)}`)
+    );
   },
   
   // Get a specific task by ID
-  getById: async (taskId: string): Promise<Task | null> => {
-    try {
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest(`/tasks/${taskId}`)
-      );
-      
-      // Handle potential response formats
-      if (response && typeof response === 'object' && !Array.isArray(response)) {
-        if ('data' in response) {
-          return response.data;
-        } else if ('id' in response) {
-          return response;
-        }
-      }
-      
-      console.warn('Unexpected response format from task API:', response);
-      return null;
-    } catch (error) {
-      console.error(`Error fetching task ${taskId}:`, error);
-      return null;
-    }
+  getById: async (taskId: string): Promise<Task> => {
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/tasks/${taskId}`)
+    );
   },
   
   // Create a new task
-  create: async (taskData: Partial<Task>): Promise<Task | null> => {
-    try {
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest('/tasks', 'POST', taskData)
-      );
-      
-      // Handle potential response formats
-      if (response && typeof response === 'object') {
-        if ('data' in response) {
-          return response.data;
-        } else if ('id' in response) {
-          return response;
-        }
-      }
-      
-      console.warn('Unexpected response format from task creation API:', response);
-      return null;
-    } catch (error) {
-      console.error('Error creating task:', error);
-      throw error; // Rethrow for create operations so the UI can show appropriate error
-    }
+  create: async (taskData: Partial<Task>): Promise<Task> => {
+    return retryRequestWithNewToken(() => 
+      apiRequest('/tasks', 'POST', taskData)
+    );
   },
   
   // Update an existing task
-  update: async (taskId: string, taskData: Partial<Task>): Promise<Task | null> => {
-    try {
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest(`/tasks/${taskId}`, 'PUT', taskData)
-      );
-      
-      // Handle potential response formats
-      if (response && typeof response === 'object') {
-        if ('data' in response) {
-          return response.data;
-        } else if ('id' in response) {
-          return response;
-        }
-      }
-      
-      console.warn('Unexpected response format from task update API:', response);
-      return null;
-    } catch (error) {
-      console.error(`Error updating task ${taskId}:`, error);
-      throw error; // Rethrow for update operations
-    }
+  update: async (taskId: string, taskData: Partial<Task>): Promise<Task> => {
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/tasks/${taskId}`, 'PUT', taskData)
+    );
   },
   
   // Update just the status of a task
-  updateStatus: async (taskId: string, status: Task['status']): Promise<Task | null> => {
-    try {
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest(`/tasks/${taskId}/status`, 'PATCH', { status })
-      );
-      
-      // Handle potential response formats
-      if (response && typeof response === 'object') {
-        if ('data' in response) {
-          return response.data;
-        } else if ('id' in response) {
-          return response;
-        }
-      }
-      
-      console.warn('Unexpected response format from task status update API:', response);
-      return null;
-    } catch (error) {
-      console.error(`Error updating status for task ${taskId}:`, error);
-      throw error; // Rethrow for update operations
-    }
+  updateStatus: async (taskId: string, status: Task['status']): Promise<Task> => {
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/tasks/${taskId}/status`, 'PATCH', { status })
+    );
   },
   
   // Delete a task
-  delete: async (taskId: string): Promise<boolean> => {
-    try {
-      await retryRequestWithNewToken(() => 
-        apiRequest(`/tasks/${taskId}`, 'DELETE')
-      );
-      return true;
-    } catch (error) {
-      console.error(`Error deleting task ${taskId}:`, error);
-      throw error; // Rethrow for delete operations
-    }
+  delete: async (taskId: string): Promise<void> => {
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/tasks/${taskId}`, 'DELETE')
+    );
   },
   
   // Get comments for a task
   getComments: async (issueId: string): Promise<TaskComment[]> => {
-    try {
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest(`/issues/${issueId}/comments`)
-      );
-      
-      if (Array.isArray(response)) {
-        return response;
-      } else if (response && response.data) {
-        return Array.isArray(response.data) ? response.data : [];
-      } else {
-        console.warn('Unexpected response format from comments API:', response);
-        return [];
-      }
-    } catch (error) {
-      console.error(`Error fetching comments for issue ${issueId}:`, error);
-      return [];
-    }
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/issues/${issueId}/comments`)
+    );
   },
   
   // Add a comment to a task
-  addComment: async (issueId: string, content: string): Promise<TaskComment | null> => {
-    try {
-      const response = await retryRequestWithNewToken(() => 
-        apiRequest(`/issues/${issueId}/comments`, 'POST', { content })
-      );
-      
-      // Handle potential response formats
-      if (response && typeof response === 'object') {
-        if ('data' in response) {
-          return response.data;
-        } else if ('id' in response) {
-          return response;
-        }
-      }
-      
-      console.warn('Unexpected response format from comment creation API:', response);
-      return null;
-    } catch (error) {
-      console.error(`Error adding comment to issue ${issueId}:`, error);
-      throw error; // Rethrow for create operations
-    }
+  addComment: async (issueId: string, content: string): Promise<TaskComment> => {
+    return retryRequestWithNewToken(() => 
+      apiRequest(`/issues/${issueId}/comments`, 'POST', { content })
+    );
   }
 }; 

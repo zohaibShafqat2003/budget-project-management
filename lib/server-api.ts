@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
-import { BACKEND_API_URL } from './api-config';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 /**
  * Make an API request to our backend from a server component or API route
@@ -7,7 +8,7 @@ import { BACKEND_API_URL } from './api-config';
 export async function serverFetch(endpoint: string, options: RequestInit = {}) {
   try {
     // Get auth token from cookies
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const authToken = cookieStore.get('authToken')?.value;
     
     // Set up headers with auth token if available
@@ -18,37 +19,15 @@ export async function serverFetch(endpoint: string, options: RequestInit = {}) {
       headers.set('Authorization', `Bearer ${authToken}`);
     }
     
-    const url = `${BACKEND_API_URL}${endpoint}`;
-    console.log(`[Server API] Fetching: ${url}`);
-    
     // Make the API request
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers
     });
     
-    console.log(`[Server API] Response status: ${response.status} for ${url}`);
-    
     // Handle response
     if (!response.ok) {
-      // Try to get error details from response
-      let errorMessage = `API request failed with status ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorMessage;
-      } catch (e) {
-        // If JSON parsing fails, try to get text content
-        try {
-          const textContent = await response.text();
-          if (textContent) {
-            errorMessage += `: ${textContent.substring(0, 100)}...`;
-          }
-        } catch (textError) {
-          // Ignore text parsing errors
-        }
-      }
-      
-      throw new Error(errorMessage);
+      throw new Error(`API request failed with status ${response.status}`);
     }
     
     // Check content type before parsing as JSON
@@ -89,8 +68,8 @@ export async function serverFetch(endpoint: string, options: RequestInit = {}) {
 /**
  * Check if the user is authenticated based on cookies
  */
-export function isServerAuthenticated(): boolean {
-  const cookieStore = cookies();
+export async function isServerAuthenticated(): Promise<boolean> {
+  const cookieStore = await cookies();
   const authToken = cookieStore.get('authToken')?.value;
   return !!authToken;
 } 

@@ -1,9 +1,5 @@
-// Re-export all our API modules for easy consumption by app components
-
+// Core API utilities
 export * from './core';
-
-// Export individual API services 
-export { tasksApi } from './tasks';
 
 // Domain-specific API modules
 export * from './tasks';
@@ -34,7 +30,4 @@ export type {
   BudgetItem,
   Expense,
   BudgetSummary
-} from './budget';
-
-// Add any additional exports or type definitions here
-export type { User } from '../types'; 
+} from './budget'; 

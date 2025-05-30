@@ -7,7 +7,6 @@ interface Params {
   };
 }
 
-// GET /api/projects/:projectId/budgets
 export async function GET(request: Request, { params }: Params) {
   try {
     // Check if user is authenticated
@@ -22,20 +21,19 @@ export async function GET(request: Request, { params }: Params) {
     const { projectId } = params;
 
     // Call our backend API using the serverFetch utility
-    const data = await serverFetch(`/projects/${projectId}/budgets`);
+    const data = await serverFetch(`/projects/${projectId}/boards`);
     
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching budget items:', error);
+    console.error('Error fetching boards:', error);
     return NextResponse.json({ 
       success: false,
-      error: 'Failed to fetch budget items',
+      error: 'Failed to fetch boards',
       data: [] 
     }, { status: 500 });
   }
 }
 
-// POST /api/projects/:projectId/budgets
 export async function POST(request: Request, { params }: Params) {
   try {
     // Check if user is authenticated
@@ -48,20 +46,20 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const { projectId } = params;
-    const budgetItemData = await request.json();
+    const boardData = await request.json();
 
     // Call our backend API using the serverFetch utility
-    const data = await serverFetch(`/projects/${projectId}/budgets`, {
+    const data = await serverFetch(`/projects/${projectId}/boards`, {
       method: 'POST',
-      body: JSON.stringify(budgetItemData)
+      body: JSON.stringify(boardData)
     });
     
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
-    console.error('Error creating budget item:', error);
+    console.error('Error creating board:', error);
     return NextResponse.json({ 
       success: false,
-      error: 'Failed to create budget item',
+      error: 'Failed to create board',
       data: null
     }, { status: 500 });
   }

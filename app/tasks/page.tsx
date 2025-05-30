@@ -14,10 +14,8 @@ import { CreateItemDialog, CreatableItemType, ProjectSimple, EpicSimple, StorySi
 import { useRouter, useSearchParams } from "next/navigation"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
-import { projectApi, userApi } from "@/lib/api"
-import { tasksApi } from "@/lib/api/tasks"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { projectApi, taskApi } from "@/lib/api"
+import { userApi } from "@/lib/api"
 
 // Define types based on our backend models
 interface Sprint {
@@ -37,15 +35,6 @@ interface Board {
   projectId: string;
   filterJQL?: string;
 }
-
-// Ensure we're using the correct status types
-const STATUS_VALUES = {
-  STORY: ['Backlog', 'To Do', 'In Progress', 'In Review', 'Done', 'Blocked'] as const,
-  TASK: ['Backlog', 'To Do', 'In Progress', 'In Review', 'Done', 'Blocked'] as const
-}
-
-type StoryStatus = typeof STATUS_VALUES.STORY[number];
-type TaskStatus = typeof STATUS_VALUES.TASK[number];
 
 export default function TasksPage() {
   const router = useRouter()
@@ -81,26 +70,28 @@ export default function TasksPage() {
       setLoading(true)
       setError(null)
       try {
-        // Fetch projects 
-        const projectsData = await projectApi.getAll();
-        
-        // Fetch users
-        const usersData = await userApi.getAll();
-        
-        setProjects(Array.isArray(projectsData) ? projectsData : (projectsData?.data || []));
-        setAllUsers(Array.isArray(usersData) ? usersData : (usersData?.data || []));
+        // Fetch projects and users in parallel
+        const [projectsResponse, usersResponse] = await Promise.all([
+          projectApi.getAll(),
+          userApi.getAll()
+        ]);
 
-        if (projectsData && (Array.isArray(projectsData) ? projectsData.length > 0 : (projectsData?.data?.length > 0))) {
-          const projectItems = Array.isArray(projectsData) ? projectsData : (projectsData?.data || []);
+        const projectsData = projectsResponse.data || [];
+        const usersData = usersResponse.data || [];
+
+        setProjects(projectsData);
+        setAllUsers(usersData);
+
+        if (projectsData.length > 0) {
           const projectIdFromUrl = searchParams.get("projectId");
-          const initialProjectId = projectIdFromUrl || (projectItems[0]?.id);
+          const initialProjectId = projectIdFromUrl || projectsData[0].id;
           setSelectedProjectId(initialProjectId);
         } else {
           setLoading(false);
         }
       } catch (err) {
         console.error("Failed to fetch initial data (projects/users):", err);
-        setError("Failed to load projects and users. Please check your network connection and try again.");
+        setError("Failed to load initial data.");
         setLoading(false);
       }
     }
@@ -126,9 +117,6 @@ export default function TasksPage() {
       try {
         // Fetch boards for selected project
         const boardsResponse = await fetch(`/api/projects/${selectedProjectId}/boards`);
-        if (!boardsResponse.ok) {
-          throw new Error(`Failed to fetch boards: ${boardsResponse.status}`);
-        }
         const boardsData = await boardsResponse.json();
         setBoards(boardsData.data || []);
 
@@ -147,22 +135,17 @@ export default function TasksPage() {
         // Fetch sprints if we have a board
         if (currentBoardId) {
           const sprintsResponse = await fetch(`/api/boards/${currentBoardId}/sprints`);
-          if (!sprintsResponse.ok) {
-            console.warn(`Failed to fetch sprints: ${sprintsResponse.status}`);
-            // Continue without sprints
+          const sprintsData = await sprintsResponse.json();
+          setSprints(sprintsData.data || []);
+          
+          // Set selected sprint
+          if (sprintsData.data && sprintsData.data.length > 0) {
+            // Find active sprint or use first one
+            const activeSprintIndex = sprintsData.data.findIndex((s: Sprint) => s.status === 'Active');
+            const initialSprintId = activeSprintIndex >= 0 ? sprintsData.data[activeSprintIndex].id : sprintsData.data[0].id;
+            setSelectedSprintId(initialSprintId);
           } else {
-            const sprintsData = await sprintsResponse.json();
-            setSprints(sprintsData.data || []);
-            
-            // Set selected sprint
-            if (sprintsData.data && sprintsData.data.length > 0) {
-              // Find active sprint or use first one
-              const activeSprintIndex = sprintsData.data.findIndex((s: Sprint) => s.status === 'Active');
-              const initialSprintId = activeSprintIndex >= 0 ? sprintsData.data[activeSprintIndex].id : sprintsData.data[0].id;
-              setSelectedSprintId(initialSprintId);
-            } else {
-              setSelectedSprintId(null);
-            }
+            setSelectedSprintId(null);
           }
         } else {
           setSprints([]);
@@ -171,27 +154,18 @@ export default function TasksPage() {
 
         // Fetch epics for the project
         const epicsResponse = await fetch(`/api/projects/${selectedProjectId}/epics`);
-        if (!epicsResponse.ok) {
-          console.warn(`Failed to fetch epics: ${epicsResponse.status}`);
-          setEpics([]);
-        } else {
-          const epicsData = await epicsResponse.json();
-          setEpics(epicsData.data || []);
-        }
+        const epicsData = await epicsResponse.json();
+        setEpics(epicsData.data || []);
 
         // Fetch stories for the project
         const storiesResponse = await fetch(`/api/projects/${selectedProjectId}/stories`);
-        if (!storiesResponse.ok) {
-          console.warn(`Failed to fetch stories: ${storiesResponse.status}`);
-          setProjectStories([]);
-        } else {
-          const storiesData = await storiesResponse.json();
-          setProjectStories(storiesData.data || []);
-        }
+        const storiesData = await storiesResponse.json();
+        setProjectStories(storiesData.data || []);
 
-        // Fetch tasks for the project using the tasksApi
-        const tasksData = await tasksApi.getByProject(selectedProjectId);
-        setProjectTasks(tasksData || []);
+        // Fetch tasks for the project
+        const tasksResponse = await fetch(`/api/tasks?projectId=${selectedProjectId}`);
+        const tasksData = await tasksResponse.json();
+        setProjectTasks(tasksData.data || []);
         
       } catch (err) {
         console.error(`Failed to fetch data for project ${selectedProjectId}:`, err);
@@ -215,9 +189,6 @@ export default function TasksPage() {
       try {
         setLoading(true);
         const response = await fetch(`/api/boards/${selectedBoardId}/sprints`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch sprints: ${response.status}`);
-        }
         const data = await response.json();
         const sprintsData = data.data || [];
         setSprints(sprintsData);
@@ -228,7 +199,7 @@ export default function TasksPage() {
             setSelectedSprintId(sprintsData[0].id);
           }
         } else {
-          setSelectedSprintId(null);
+            setSelectedSprintId(null);
         }
       } catch (err) {
         console.error("Failed to fetch sprints:", err);
@@ -249,75 +220,70 @@ export default function TasksPage() {
 
   const handleItemCreated = async (item: TaskSimple | StorySimple | EpicSimple) => {
     // Refresh data after item creation
-    if (selectedProjectId) {
-      setLoading(true);
+        if (selectedProjectId) {
+                setLoading(true);
       
       try {
         if ('epicId' in item) {
           // It's a story
           const storiesResponse = await fetch(`/api/projects/${selectedProjectId}/stories`);
-          if (!storiesResponse.ok) {
-            throw new Error(`Failed to refresh stories: ${storiesResponse.status}`);
-          }
           const storiesData = await storiesResponse.json();
           setProjectStories(storiesData.data || []);
         } else if ('storyId' in item) {
-          // It's a task - use the tasksApi
-          const tasksData = await tasksApi.getByProject(selectedProjectId);
-          setProjectTasks(tasksData || []);
+          // It's a task
+          const tasksResponse = await fetch(`/api/tasks?projectId=${selectedProjectId}`);
+          const tasksData = await tasksResponse.json();
+          setProjectTasks(tasksData.data || []);
         } else {
           // It's an epic
           const epicsResponse = await fetch(`/api/projects/${selectedProjectId}/epics`);
-          if (!epicsResponse.ok) {
-            throw new Error(`Failed to refresh epics: ${epicsResponse.status}`);
-          }
           const epicsData = await epicsResponse.json();
           setEpics(epicsData.data || []);
         }
-      } catch (err) {
+                } catch (err) {
         console.error("Failed to refresh data after item creation:", err);
-        setError("Failed to refresh data after creating the item.");
-      } finally {
-        setLoading(false);
-      }
+                } finally {
+                    setLoading(false);
+        }
     }
+  }
+  
+  const handleProjectChange = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    router.push(`/tasks?view=${view}&projectId=${projectId}`, { scroll: false });
   }
 
   const handleBoardChange = (boardId: string) => {
     setSelectedBoardId(boardId);
     router.push(`/tasks?view=${view}&projectId=${selectedProjectId || ''}&boardId=${boardId}`, { scroll: false });
   }
-  
+
   const handleSprintChange = (sprintId: string) => {
     setSelectedSprintId(sprintId);
   }
 
   const handleOpenCreateItemDialog = (type: CreatableItemType, defaults: { epicId?: string, projectId?: string, storyId?: string } = {}) => {
     setCreateItemType(type);
-    setCreateItemDefaults({ ...defaults, projectId: defaults.projectId || selectedProjectId });
+    setCreateItemDefaults({
+      ...defaults,
+      projectId: defaults.projectId || selectedProjectId || undefined
+    });
     setShowCreateItemDialog(true);
   }
 
   const handleAssignStoryToSprint = async (storyId: string, sprintIdValue: string) => {
-    setLoading(true);
     try {
-      const response = await fetch(`/api/stories/${storyId}/sprint`, {
+      setLoading(true);
+      await fetch(`/api/stories/${storyId}/sprint`, {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ sprintId: sprintIdValue }),
+        body: JSON.stringify({ sprintId: sprintIdValue })
       });
       
-      if (!response.ok) {
-        throw new Error(`Failed to assign story to sprint: ${response.status}`);
-      }
-      
-      // Refresh the story list after assignment
+      // Refresh stories
       const storiesResponse = await fetch(`/api/projects/${selectedProjectId}/stories`);
-      if (!storiesResponse.ok) {
-        throw new Error(`Failed to refresh stories: ${storiesResponse.status}`);
-      }
       const storiesData = await storiesResponse.json();
       setProjectStories(storiesData.data || []);
     } catch (err) {
@@ -328,27 +294,21 @@ export default function TasksPage() {
     }
   }
 
-  const handleUpdateStoryStatus = async (storyId: string, status: StoryStatus) => {
-    setLoading(true);
+  const handleUpdateStoryStatus = async (storyId: string, status: StorySimple['status']) => {
     try {
-      const response = await fetch(`/api/stories/${storyId}/status`, {
-        method: 'PATCH',
+      setLoading(true);
+      await fetch(`/api/stories/${storyId}`, {
+        method: 'PUT',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status })
       });
       
-      if (!response.ok) {
-        throw new Error(`Failed to update story status: ${response.status}`);
-      }
-      
-      // Update the local state
-      setProjectStories(prevStories => 
-        prevStories.map(story => 
-          story.id === storyId ? { ...story, status } : story
-        )
-      );
+      // Refresh stories
+      const storiesResponse = await fetch(`/api/projects/${selectedProjectId}/stories`);
+      const storiesData = await storiesResponse.json();
+      setProjectStories(storiesData.data || []);
     } catch (err) {
       console.error("Failed to update story status:", err);
       setError("Failed to update story status.");
@@ -358,21 +318,20 @@ export default function TasksPage() {
   }
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskSimple['status']) => {
-    setLoading(true);
     try {
-      // Use tasksApi to update task status
-      const updatedTask = await tasksApi.updateStatus(taskId, status);
+      setLoading(true);
+      await fetch(`/api/tasks/${taskId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status })
+      });
       
-      if (!updatedTask) {
-        throw new Error('Failed to update task status: No response from API');
-      }
-      
-      // Update the local state
-      setProjectTasks(prevTasks => 
-        prevTasks.map(task => 
-          task.id === taskId ? { ...task, status } : task
-        )
-      );
+      // Refresh tasks
+      const tasksResponse = await fetch(`/api/tasks?projectId=${selectedProjectId}`);
+      const tasksData = await tasksResponse.json();
+      setProjectTasks(tasksData.data || []);
     } catch (err) {
       console.error("Failed to update task status:", err);
       setError("Failed to update task status.");
@@ -382,220 +341,183 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="h-full flex-1 flex-col space-y-4 p-4 md:p-8 flex">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">Task Management</h2>
-          <p className="text-muted-foreground">
-            Manage, track, and organize your project tasks
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="default" 
-            size="sm" 
-            className="hidden md:flex"
-            onClick={() => handleOpenCreateItemDialog('Task')}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Task
-          </Button>
-          <Button 
-            variant="default" 
-            className="md:hidden" 
-            size="icon"
-            onClick={() => handleOpenCreateItemDialog('Task')}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
+    <div className="container mx-auto py-6 space-y-4">
+      <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Tasks</h1>
+        <Button onClick={() => handleOpenCreateItemDialog('Task')}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Task
+        </Button>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {error && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+      {error && (
+        <Card className="bg-red-50 border-red-200 p-3 text-red-800">
+          <p>{error}</p>
+        </Card>
+      )}
 
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <div className="flex-1 space-y-1">
-            <Label htmlFor="projectSelect">Project</Label>
-            <Select
-              value={selectedProjectId || ''}
-              onValueChange={(value) => {
-                setSelectedProjectId(value);
-                router.push(`/tasks?view=${view}&projectId=${value}`, { scroll: false });
-              }}
-              disabled={loading}
-            >
-              <SelectTrigger id="projectSelect" className="w-full md:w-[200px]">
-                <SelectValue placeholder="Select project" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
+      <div className="flex flex-col lg:flex-row gap-4 bg-muted p-4 rounded-lg">
+        <div className="w-full lg:w-1/4">
+          <Label htmlFor="project-select" className="text-sm font-medium mb-1.5 block">Project</Label>
+          <Select value={selectedProjectId || ''} onValueChange={handleProjectChange}>
+            <SelectTrigger id="project-select" className="w-full">
+              <SelectValue placeholder="Select project" />
+                </SelectTrigger>
+                <SelectContent>
+              {projects.map(project => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+                </SelectContent>
             </Select>
-          </div>
-          
-          {boards.length > 0 && (
-            <div className="flex-1 space-y-1">
-              <Label htmlFor="boardSelect">Board</Label>
-              <Select
-                value={selectedBoardId || ''}
-                onValueChange={handleBoardChange}
-                disabled={loading}
-              >
-                <SelectTrigger id="boardSelect" className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Select board" />
-                </SelectTrigger>
-                <SelectContent>
-                  {boards.map((board) => (
-                    <SelectItem key={board.id} value={board.id}>
-                      {board.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          
-          {sprints.length > 0 && (
-            <div className="flex-1 space-y-1">
-              <Label htmlFor="sprintSelect">Sprint</Label>
-              <Select
-                value={selectedSprintId || ''}
-                onValueChange={handleSprintChange}
-                disabled={loading}
-              >
-                <SelectTrigger id="sprintSelect" className="w-full md:w-[200px]">
-                  <SelectValue placeholder="Select sprint" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sprints.map((sprint) => (
-                    <SelectItem key={sprint.id} value={sprint.id}>
-                      {sprint.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </div>
 
-        <div className="flex flex-col md:flex-row gap-2">
-          <div className="flex-1 relative">
+        <div className="w-full lg:w-1/4">
+          <Label htmlFor="board-select" className="text-sm font-medium mb-1.5 block">Board</Label>
+          <Select value={selectedBoardId || ''} onValueChange={handleBoardChange} disabled={!selectedProjectId || boards.length === 0}>
+            <SelectTrigger id="board-select" className="w-full">
+              <SelectValue placeholder={boards.length === 0 ? "No boards available" : "Select board"} />
+                </SelectTrigger>
+                <SelectContent>
+              {boards.map(board => (
+                <SelectItem key={board.id} value={board.id}>
+                  {board.name}
+                </SelectItem>
+              ))}
+                </SelectContent>
+            </Select>
+        </div>
+
+        <div className="w-full lg:w-1/4">
+          <Label htmlFor="sprint-select" className="text-sm font-medium mb-1.5 block">Sprint</Label>
+          <Select value={selectedSprintId || ''} onValueChange={handleSprintChange} disabled={!selectedBoardId || sprints.length === 0}>
+            <SelectTrigger id="sprint-select" className="w-full">
+              <SelectValue placeholder={sprints.length === 0 ? "No sprints available" : "Select sprint"} />
+              </SelectTrigger>
+              <SelectContent>
+              {sprints.map(sprint => (
+                <SelectItem key={sprint.id} value={sprint.id}>
+                  {sprint.name} ({sprint.status})
+                </SelectItem>
+              ))}
+              <SelectItem value="backlog">Backlog</SelectItem>
+              </SelectContent>
+            </Select>
+      </div>
+
+        <div className="w-full lg:w-1/4">
+          <Label htmlFor="search-input" className="text-sm font-medium mb-1.5 block">Search</Label>
+          <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
+            <Input 
+              id="search-input"
               placeholder="Search tasks..."
-              className="w-full pl-8"
+              className="w-full pl-9"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Tabs defaultValue={view} className="w-fit" onValueChange={handleViewChange}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="board">
-                  <Kanban className="h-4 w-4 md:mr-2" />
-                  <span className="hidden md:inline">Board</span>
-                </TabsTrigger>
-                <TabsTrigger value="list">
-                  <List className="h-4 w-4 md:mr-2" />
-                  <span className="hidden md:inline">List</span>
-                </TabsTrigger>
-                <TabsTrigger value="backlog">
-                  <Filter className="h-4 w-4 md:mr-2" />
-                  <span className="hidden md:inline">Backlog</span>
-                </TabsTrigger>
-                <TabsTrigger value="timeline">
-                  <CalendarRange className="h-4 w-4 md:mr-2" />
-                  <span className="hidden md:inline">Timeline</span>
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
         </div>
       </div>
 
-      <div className="flex-1">
-        {loading ? (
-          <Card className="p-8 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-2">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent"></div>
-              <p className="text-sm text-muted-foreground">Loading...</p>
+      <Tabs defaultValue={view} value={view} onValueChange={handleViewChange} className="w-full">
+        <div className="flex justify-between items-center mb-4">
+            <TabsList>
+            <TabsTrigger value="board" className="flex items-center gap-1">
+              <Kanban className="h-4 w-4" /> Board
+            </TabsTrigger>
+            <TabsTrigger value="list" className="flex items-center gap-1">
+              <List className="h-4 w-4" /> List
+              </TabsTrigger>
+            <TabsTrigger value="backlog" className="flex items-center gap-1">
+              <ChevronDown className="h-4 w-4" /> Backlog
+              </TabsTrigger>
+            <TabsTrigger value="timeline" className="flex items-center gap-1">
+              <CalendarRange className="h-4 w-4" /> Timeline
+              </TabsTrigger>
+            </TabsList>
+          
+          <Button variant="outline" size="sm" onClick={() => handleOpenCreateItemDialog('Epic')}>
+            <Plus className="h-4 w-4 mr-1" /> New Epic
+            </Button>
+        </div>
+
+        <TabsContent value="board" className="mt-0">
+          {loading ? (
+            <div className="h-40 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+          </div>
+          ) : (
+            <div className="text-center p-6">
+              <p className="text-lg text-muted-foreground">Board view is being updated to work with the new API. Please check back soon.</p>
             </div>
-          </Card>
+          )}
+        </TabsContent>
+        
+        <TabsContent value="list" className="mt-0">
+          {loading ? (
+            <div className="h-40 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+            </div>
         ) : (
-          <>
-            {view === "board" && (
-              <KanbanBoard
-                projectId={selectedProjectId || ''}
-                sprintId={selectedSprintId}
-                epics={epics}
-                stories={projectStories}
-                tasks={projectTasks}
-                users={allUsers}
-                searchTerm={searchTerm}
-                onOpenCreateItemDialog={handleOpenCreateItemDialog}
-                onUpdateTaskStatus={handleUpdateTaskStatus}
-                onUpdateStoryStatus={handleUpdateStoryStatus}
-              />
-            )}
+            <TaskList
+              projectId={selectedProjectId || ''}
+              epics={epics}
+              stories={projectStories}
+              tasks={projectTasks}
+              users={allUsers}
+              searchTerm={searchTerm}
+              onOpenCreateItemDialog={handleOpenCreateItemDialog}
+            />
+              )}
+        </TabsContent>
 
-            {view === "list" && (
-              <TaskList
-                projectId={selectedProjectId || ''}
-                epics={epics}
-                stories={projectStories}
-                tasks={projectTasks}
-                users={allUsers}
-                searchTerm={searchTerm}
-                onOpenCreateItemDialog={handleOpenCreateItemDialog}
-              />
-            )}
+        <TabsContent value="backlog" className="mt-0">
+          {loading ? (
+            <div className="h-40 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+            </div>
+          ) : (
+                <TaskBacklog 
+              projectId={selectedProjectId || ''}
+              selectedSprintId={selectedSprintId}
+              sprints={sprints}
+                  epics={epics} 
+              stories={projectStories}
+                  users={allUsers}
+              searchTerm={searchTerm}
+              onOpenCreateItemDialog={handleOpenCreateItemDialog}
+                  onAssignStoryToSprint={handleAssignStoryToSprint}
+                  onUpdateStoryStatus={handleUpdateStoryStatus}
+                />
+              )}
+        </TabsContent>
 
-            {view === "backlog" && (
-              <TaskBacklog
-                projectId={selectedProjectId || ''}
-                epics={epics}
-                stories={projectStories}
-                users={allUsers}
-                sprints={sprints}
-                selectedSprintId={selectedSprintId}
-                searchTerm={searchTerm}
-                onOpenCreateItemDialog={handleOpenCreateItemDialog}
-                onAssignStoryToSprint={handleAssignStoryToSprint}
-                onUpdateStoryStatus={handleUpdateStoryStatus}
-              />
-            )}
+        <TabsContent value="timeline" className="mt-0">
+          {loading ? (
+            <div className="h-40 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+            </div>
+          ) : (
+            <div className="text-center p-6">
+              <p className="text-lg text-muted-foreground">Timeline view coming soon</p>
+            </div>
+              )}
+        </TabsContent>
+      </Tabs>
 
-            {view === "timeline" && (
-              <TaskGantt />
-            )}
-          </>
-        )}
-      </div>
-
-      <CreateItemDialog
-        open={showCreateItemDialog}
-        onOpenChange={setShowCreateItemDialog}
-        onItemCreated={handleItemCreated}
-        projectId={selectedProjectId}
-        sprintId={selectedSprintId}
+      <CreateItemDialog 
+        open={showCreateItemDialog} 
+        onOpenChange={setShowCreateItemDialog} 
+        itemType={createItemType}
         projects={projects}
         epics={epics}
         projectStories={projectStories}
         users={allUsers}
-        itemType={createItemType}
+        projectId={selectedProjectId || ""}
         initialDefaults={createItemDefaults}
+        onItemCreated={handleItemCreated}
       />
     </div>
   )
