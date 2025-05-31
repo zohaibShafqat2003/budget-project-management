@@ -205,7 +205,7 @@ export function ListView({ projectId, items, users, onOpenCreateItemDialog, onDe
     try {
       setLoading(true)
       setError(null)
-      await onDeleteItem(itemToDelete.type, itemToDelete.id)
+      await onDeleteItem(itemToDelete.type === 'Bug' ? 'Task' : itemToDelete.type, itemToDelete.id)
       setDeleteConfirmOpen(false)
       setItemToDelete(null)
     } catch (error) {

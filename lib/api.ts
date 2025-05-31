@@ -386,6 +386,18 @@ export const taskApi = {
   
   delete: async (taskId: string) => {
     return apiRequest(`/tasks/${taskId}`, 'DELETE');
+  },
+  
+  getAll: async (filters: Record<string, any> = {}) => {
+    // Convert filters to query string
+    const queryParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        queryParams.append(key, String(value));
+      }
+    });
+    const queryString = queryParams.toString();
+    return apiRequest(`/tasks${queryString ? `?${queryString}` : ''}`);
   }
 };
 

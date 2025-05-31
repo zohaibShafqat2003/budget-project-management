@@ -302,7 +302,7 @@ export function BacklogView({
                         </Badge>
                       </div>
                       <div className="flex items-center gap-3">
-                        <Badge variant={epic.status === 'Done' ? 'success' : 'secondary'} className="mr-2">
+                        <Badge variant={epic.status === 'Done' ? 'default' : 'secondary'} className="mr-2">
                           {epic.status}
                         </Badge>
                         <div className="w-24 hidden sm:block">

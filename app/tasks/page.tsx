@@ -566,6 +566,7 @@ export default function TasksPage() {
                   projectId={selectedProjectId} 
                   boardId={selectedBoardId}
                   sprintId={selectedSprintId}
+                  users={allUsers}
                   onOpenCreateItemDialog={handleOpenCreateItemDialog}
                 />
               ) : (

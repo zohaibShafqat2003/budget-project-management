@@ -44,6 +44,7 @@ interface BoardViewProps {
   projectId: string
   boardId: string
   sprintId: string
+  users: User[]
   onOpenCreateItemDialog: (type: CreatableItemType, defaults: { epicId?: string, projectId?: string, storyId?: string, sprintId?: string }) => void
 }
 
@@ -104,7 +105,7 @@ const getItemTypeIcon = (item: Story | Task | Epic) => {
   return <CheckCircle className="h-4 w-4 text-blue-500 mr-1" />
 }
 
-export function BoardView({ projectId, boardId, sprintId, onOpenCreateItemDialog }: BoardViewProps) {
+export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateItemDialog }: BoardViewProps) {
   const [columns, setColumns] = useState<Column[]>([])
   const [sprint, setSprint] = useState<Sprint | null>(null)
   const [loading, setLoading] = useState(true)
@@ -328,7 +329,7 @@ export function BoardView({ projectId, boardId, sprintId, onOpenCreateItemDialog
                     ...task, 
                     assigneeId, 
                     assignee: assigneeId 
-                      ? allUsers.find(u => u.id === assigneeId) 
+                      ? users.find((u: User) => u.id === assigneeId) 
                       : undefined 
                   } 
                 : task

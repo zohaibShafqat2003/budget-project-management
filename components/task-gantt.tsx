@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ArrowRight, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { taskApi } from "@/lib/api"
 
 // Types
 type Task = {
@@ -34,171 +35,43 @@ export function TaskGantt() {
   const [filter, setFilter] = useState("all")
   const [zoomLevel, setZoomLevel] = useState(100)
   const [currentDate, setCurrentDate] = useState(new Date("2025-03-15"))
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const tasks: Task[] = [
-    // Epics
-    {
-      id: 1,
-      title: "UX Design",
-      type: "epic",
-      status: "In Progress",
-      startDate: "2025-03-01",
-      endDate: "2025-04-30",
-      progress: 40,
-      color: "purple",
-    },
-    {
-      id: 2,
-      title: "Security Implementation",
-      type: "epic",
-      status: "To Do",
-      startDate: "2025-04-01",
-      endDate: "2025-06-15",
-      progress: 10,
-      color: "red",
-    },
-    {
-      id: 3,
-      title: "Frontend Overhaul",
-      type: "epic",
-      status: "In Progress",
-      startDate: "2025-03-15",
-      endDate: "2025-05-15",
-      progress: 30,
-      color: "blue",
-    },
-
-    // Stories
-    {
-      id: 4,
-      title: "User Flow Design",
-      type: "story",
-      status: "In Progress",
-      startDate: "2025-03-01",
-      endDate: "2025-03-14",
-      progress: 80,
-      assignee: {
-        name: "Sarah Miller",
-        avatar: "/placeholder.svg?height=32&width=32",
-        initials: "SM",
-      },
-      parentId: 1,
-    },
-    {
-      id: 5,
-      title: "Wireframe Design",
-      type: "story",
-      status: "To Do",
-      startDate: "2025-03-15",
-      endDate: "2025-03-31",
-      progress: 0,
-      parentId: 1,
-    },
-    {
-      id: 6,
-      title: "Authentication System",
-      type: "story",
-      status: "To Do",
-      startDate: "2025-04-01",
-      endDate: "2025-04-21",
-      progress: 0,
-      assignee: {
-        name: "Mike Chen",
-        avatar: "/placeholder.svg?height=32&width=32",
-        initials: "MC",
-      },
-      parentId: 2,
-    },
-    {
-      id: 7,
-      title: "Homepage Redesign",
-      type: "story",
-      status: "In Progress",
-      startDate: "2025-03-15",
-      endDate: "2025-04-05",
-      progress: 50,
-      assignee: {
-        name: "Alex Johnson",
-        avatar: "/placeholder.svg?height=32&width=32",
-        initials: "AJ",
-      },
-      parentId: 3,
-    },
-
-    // Tasks
-    {
-      id: 8,
-      title: "Create user flow diagrams",
-      type: "task",
-      status: "In Progress",
-      startDate: "2025-03-01",
-      endDate: "2025-03-07",
-      progress: 90,
-      assignee: {
-        name: "Sarah Miller",
-        avatar: "/placeholder.svg?height=32&width=32",
-        initials: "SM",
-      },
-      parentId: 4,
-    },
-    {
-      id: 9,
-      title: "Review user flows with stakeholders",
-      type: "task",
-      status: "To Do",
-      startDate: "2025-03-08",
-      endDate: "2025-03-14",
-      progress: 0,
-      assignee: {
-        name: "Sarah Miller",
-        avatar: "/placeholder.svg?height=32&width=32",
-        initials: "SM",
-      },
-      dependencies: [8],
-      parentId: 4,
-    },
-    {
-      id: 10,
-      title: "Implement authentication",
-      type: "task",
-      status: "To Do",
-      startDate: "2025-04-01",
-      endDate: "2025-04-15",
-      progress: 0,
-      assignee: {
-        name: "Mike Chen",
-        avatar: "/placeholder.svg?height=32&width=32",
-        initials: "MC",
-      },
-      parentId: 6,
-    },
-    {
-      id: 11,
-      title: "Update homepage design",
-      type: "task",
-      status: "In Progress",
-      startDate: "2025-03-15",
-      endDate: "2025-03-25",
-      progress: 70,
-      assignee: {
-        name: "Alex Johnson",
-        avatar: "/placeholder.svg?height=32&width=32",
-        initials: "AJ",
-      },
-      parentId: 7,
-    },
-    {
-      id: 12,
-      title: "Implement responsive design",
-      type: "task",
-      status: "To Do",
-      startDate: "2025-03-26",
-      endDate: "2025-04-05",
-      progress: 0,
-      dependencies: [11],
-      parentId: 7,
-    },
-  ]
+  useEffect(() => {
+    const fetchTasks = async () => {
+      setLoading(true)
+      try {
+        const response = await taskApi.getAll()
+        // Map API data to local Task type if needed
+        const apiTasks = (response.data || response) as any[]
+        const mappedTasks: Task[] = apiTasks.map((t) => ({
+          id: typeof t.id === 'string' ? parseInt(t.id) : t.id,
+          title: t.title,
+          type: (t.type || 'task').toLowerCase(),
+          status: t.status,
+          startDate: t.startDate ? (typeof t.startDate === 'string' ? t.startDate : new Date(t.startDate).toISOString().slice(0,10)) : '',
+          endDate: t.endDate ? (typeof t.endDate === 'string' ? t.endDate : new Date(t.endDate).toISOString().slice(0,10)) : '',
+          progress: t.progress || 0,
+          color: t.color,
+          assignee: t.assignee ? {
+            name: t.assignee.name || `${t.assignee.firstName || ''} ${t.assignee.lastName || ''}`.trim(),
+            avatar: t.assignee.avatar || "/placeholder.svg?height=32&width=32",
+            initials: t.assignee.initials || ((t.assignee.firstName?.[0] || '') + (t.assignee.lastName?.[0] || '')).toUpperCase(),
+          } : undefined,
+          dependencies: t.dependencies,
+          parentId: t.parentId ? (typeof t.parentId === 'string' ? parseInt(t.parentId) : t.parentId) : undefined,
+        }))
+        setTasks(mappedTasks)
+      } catch (error) {
+        console.error("Error fetching tasks for Gantt:", error)
+        setTasks([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchTasks()
+  }, [])
 
   // Filter tasks based on the selected filter
   const filteredTasks = filter === "all" ? tasks : tasks.filter((task) => task.type === filter)
@@ -368,130 +241,136 @@ export function TaskGantt() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="relative overflow-x-auto" style={{ minHeight: "500px" }}>
-          <div className="gantt-container" style={{ zoom: `${zoomLevel}%` }}>
-            {/* Timeline Header */}
-            <div className="gantt-header flex border-b sticky top-0 bg-background z-10">
-              <div className="gantt-task-info w-64 min-w-64 shrink-0 p-2 border-r">
-                <span className="text-sm font-medium">Task</span>
+        {loading ? (
+          <div className="h-40 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
+          </div>
+        ) : (
+          <div className="relative overflow-x-auto" style={{ minHeight: "500px" }}>
+            <div className="gantt-container" style={{ zoom: `${zoomLevel}%` }}>
+              {/* Timeline Header */}
+              <div className="gantt-header flex border-b sticky top-0 bg-background z-10">
+                <div className="gantt-task-info w-64 min-w-64 shrink-0 p-2 border-r">
+                  <span className="text-sm font-medium">Task</span>
+                </div>
+                <div className="gantt-timeline flex-1 flex">
+                  {timeFrameDates.map((date, index) => (
+                    <div
+                      key={index}
+                      className={`text-center p-2 text-xs border-r last:border-r-0 ${
+                        date.getDay() === 0 || date.getDay() === 6 ? "bg-muted/50" : ""
+                      }`}
+                      style={{ width: `${100 / timeFrameDates.length}%` }}
+                    >
+                      {formatDate(date)}
+                      {view !== "month" && (
+                        <div className="text-muted-foreground">
+                          {date.toLocaleDateString("en-US", { weekday: "short" })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="gantt-timeline flex-1 flex">
-                {timeFrameDates.map((date, index) => (
-                  <div
-                    key={index}
-                    className={`text-center p-2 text-xs border-r last:border-r-0 ${
-                      date.getDay() === 0 || date.getDay() === 6 ? "bg-muted/50" : ""
-                    }`}
-                    style={{ width: `${100 / timeFrameDates.length}%` }}
-                  >
-                    {formatDate(date)}
-                    {view !== "month" && (
-                      <div className="text-muted-foreground">
-                        {date.toLocaleDateString("en-US", { weekday: "short" })}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Tasks and Timeline */}
-            <div className="gantt-body">
-              {filteredTasks.map((task) => {
-                const position = calculateTaskPosition(task)
-                if (!position) return null // Skip tasks not in the visible timeframe
+              {/* Tasks and Timeline */}
+              <div className="gantt-body">
+                {filteredTasks.map((task) => {
+                  const position = calculateTaskPosition(task)
+                  if (!position) return null // Skip tasks not in the visible timeframe
 
-                return (
-                  <div key={task.id} className="gantt-row flex border-b hover:bg-muted/30">
-                    <div className="gantt-task-info w-64 min-w-64 shrink-0 p-2 border-r flex items-center">
-                      <div className={`w-3 h-3 rounded-sm mr-2 bg-${getTaskColor(task)}-500`}></div>
-                      <div className="truncate flex-1">
-                        <div className="font-medium text-sm truncate">{task.title}</div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {task.type}
-                          </Badge>
-                          {task.assignee && (
-                            <Avatar className="h-5 w-5 ml-1">
-                              <AvatarImage src={task.assignee.avatar} />
-                              <AvatarFallback className="text-[10px]">{task.assignee.initials}</AvatarFallback>
-                            </Avatar>
-                          )}
+                  return (
+                    <div key={task.id} className="gantt-row flex border-b hover:bg-muted/30">
+                      <div className="gantt-task-info w-64 min-w-64 shrink-0 p-2 border-r flex items-center">
+                        <div className={`w-3 h-3 rounded-sm mr-2 bg-${getTaskColor(task)}-500`}></div>
+                        <div className="truncate flex-1">
+                          <div className="font-medium text-sm truncate">{task.title}</div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {task.type}
+                            </Badge>
+                            {task.assignee && (
+                              <Avatar className="h-5 w-5 ml-1">
+                                <AvatarImage src={task.assignee.avatar} />
+                                <AvatarFallback className="text-[10px]">{task.assignee.initials}</AvatarFallback>
+                              </Avatar>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="gantt-timeline flex-1 relative">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
+                      <div className="gantt-timeline flex-1 relative">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className={`absolute top-1 rounded-sm h-8 bg-${getTaskColor(task)}-500 hover:bg-${getTaskColor(task)}-600 cursor-pointer border border-${getTaskColor(task)}-700`}
+                                style={{
+                                  left: position.left,
+                                  width: position.width,
+                                }}
+                              >
+                                <div className="h-full bg-primary/20" style={{ width: `${task.progress}%` }}></div>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <div className="space-y-1">
+                                <div className="font-medium">{task.title}</div>
+                                <div className="text-xs">
+                                  {new Date(task.startDate).toLocaleDateString()} -{" "}
+                                  {new Date(task.endDate).toLocaleDateString()}
+                                </div>
+                                <div className="text-xs">Progress: {task.progress}%</div>
+                                <div className="text-xs">Status: {task.status}</div>
+                                {task.assignee && (
+                                  <div className="text-xs flex items-center">
+                                    Assignee:
+                                    <Avatar className="h-4 w-4 ml-1 mr-1">
+                                      <AvatarImage src={task.assignee.avatar} />
+                                      <AvatarFallback className="text-[8px]">{task.assignee.initials}</AvatarFallback>
+                                    </Avatar>
+                                    {task.assignee.name}
+                                  </div>
+                                )}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        {/* Dependency arrows */}
+                        {task.dependencies?.map((depId) => {
+                          const depTask = tasks.find((t) => t.id === depId)
+                          if (!depTask) return null
+
+                          const depPosition = calculateTaskPosition(depTask)
+                          if (!depPosition) return null
+
+                          // Simple right-to-left arrow, in a real implementation this would be more sophisticated
+                          return (
                             <div
-                              className={`absolute top-1 rounded-sm h-8 bg-${getTaskColor(task)}-500 hover:bg-${getTaskColor(task)}-600 cursor-pointer border border-${getTaskColor(task)}-700`}
+                              key={`${task.id}-${depId}`}
+                              className="absolute top-5 border-t-2 border-dashed border-gray-400 flex items-center justify-center"
                               style={{
-                                left: position.left,
-                                width: position.width,
+                                left: depPosition.left,
+                                width: `calc(${position.left} - ${depPosition.left})`,
+                                transform: "translateX(100%)",
                               }}
                             >
-                              <div className="h-full bg-primary/20" style={{ width: `${task.progress}%` }}></div>
+                              <ArrowRight className="absolute right-0 h-3 w-3 text-gray-400 -translate-y-1.5" />
                             </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <div className="space-y-1">
-                              <div className="font-medium">{task.title}</div>
-                              <div className="text-xs">
-                                {new Date(task.startDate).toLocaleDateString()} -{" "}
-                                {new Date(task.endDate).toLocaleDateString()}
-                              </div>
-                              <div className="text-xs">Progress: {task.progress}%</div>
-                              <div className="text-xs">Status: {task.status}</div>
-                              {task.assignee && (
-                                <div className="text-xs flex items-center">
-                                  Assignee:
-                                  <Avatar className="h-4 w-4 ml-1 mr-1">
-                                    <AvatarImage src={task.assignee.avatar} />
-                                    <AvatarFallback className="text-[8px]">{task.assignee.initials}</AvatarFallback>
-                                  </Avatar>
-                                  {task.assignee.name}
-                                </div>
-                              )}
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-
-                      {/* Dependency arrows */}
-                      {task.dependencies?.map((depId) => {
-                        const depTask = tasks.find((t) => t.id === depId)
-                        if (!depTask) return null
-
-                        const depPosition = calculateTaskPosition(depTask)
-                        if (!depPosition) return null
-
-                        // Simple right-to-left arrow, in a real implementation this would be more sophisticated
-                        return (
-                          <div
-                            key={`${task.id}-${depId}`}
-                            className="absolute top-5 border-t-2 border-dashed border-gray-400 flex items-center justify-center"
-                            style={{
-                              left: depPosition.left,
-                              width: `calc(${position.left} - ${depPosition.left})`,
-                              transform: "translateX(100%)",
-                            }}
-                          >
-                            <ArrowRight className="absolute right-0 h-3 w-3 text-gray-400 -translate-y-1.5" />
-                          </div>
-                        )
-                      })}
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
 
-              {filteredTasks.length === 0 && (
-                <div className="p-8 text-center text-muted-foreground">No tasks found for the selected filter.</div>
-              )}
+                {filteredTasks.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground">No tasks found for the selected filter.</div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   )

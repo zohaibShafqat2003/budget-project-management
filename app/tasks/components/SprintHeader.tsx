@@ -74,7 +74,7 @@ export function SprintHeader({ sprint, stories, onStartSprint, onCompleteSprint 
             <div className="flex items-center gap-2">
               <ArrowLeft className="h-4 w-4 text-muted-foreground" />
               <h2 className="text-xl font-semibold">{sprint.name}</h2>
-              <Badge variant={sprint.status === 'Active' ? 'default' : (sprint.status === 'Completed' ? 'success' : 'secondary')}>
+              <Badge variant={sprint.status === 'Active' ? 'default' : (sprint.status === 'Completed' ? 'default' : 'secondary')}>
                 {sprint.status}
               </Badge>
             </div>
