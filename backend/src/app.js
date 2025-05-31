@@ -82,13 +82,13 @@ app.use('/api/clients', clientRoutes);
 
 // Important: These routes have paths starting with /projects/:projectId in their route files
 // So we need to mount them at the /api root to maintain correct paths
+app.use('/api', taskRoutes);
 app.use('/api', budgetRoutes);
 app.use('/api', expenseRoutes);
 app.use('/api', boardRoutes);
 app.use('/api', epicRoutes);
 app.use('/api', storyRoutes);
 app.use('/api', sprintRoutes);
-app.use('/api', taskRoutes);
 
 // These routes also have resource-specific endpoints
 app.use('/api/comments', commentRoutes);

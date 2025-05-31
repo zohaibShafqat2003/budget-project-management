@@ -16,30 +16,66 @@ const validateRequest = (req, res, next) => {
   next();
 };
 
-// @route   GET /api/tasks
-// @desc    Get all tasks with filtering
-// @access  Private
-router.get('/tasks', [
-  query('projectId').optional().isUUID(),
-  query('storyId').optional().isUUID(),
-  query('assigneeId').optional().isUUID(),
-  query('status').optional().isIn(['Created', 'To Do', 'In Progress', 'Review', 'Done', 'Closed']),
-  query('priority').optional().isIn(['Low', 'Medium', 'High', 'Urgent']),
-  query('type').optional().isIn(['Task', 'Bug', 'Improvement', 'Subtask']),
-  query('labelId').optional().isUUID(),
-  query('sprintId').optional().isUUID(),
-  query('limit').optional().isInt({ min: 1, max: 100 }),
-  query('offset').optional().isInt({ min: 0 }),
-  validateRequest
-], authenticateToken, taskController.getAllTasks);
+//
+// ─── 1) LIST / FILTER TASKS ───────────────────────────────────────────────────────
+//
 
-// @route   GET /api/tasks/:id
-// @desc    Get a task by ID
-// @access  Private
-router.get('/tasks/:id', [
-  param('id').isUUID(),
-  validateRequest
-], authenticateToken, taskController.getTaskById);
+/**
+ * @route   GET /api/tasks
+ * @desc    List all tasks (optionally filtered by projectId, storyId, etc.)
+ * @access  Private (any authenticated role)
+ * 
+ * NOTE: This route MUST appear BEFORE the GET /tasks/:id route!
+ * If you swap them, a request to /tasks?projectId=... will be treated as 
+ * /tasks/:id with id="tasks", causing the UUID validation to fail.
+ */
+router.get(
+  '/tasks',
+  [
+    // Optional query‐string validators:
+    query('projectId').optional().isUUID().withMessage('projectId must be a valid UUID'),
+    query('storyId').optional().isUUID().withMessage('storyId must be a valid UUID'),
+    query('assigneeId').optional().isUUID().withMessage('assigneeId must be a valid UUID'),
+    query('status')
+      .optional()
+      .isIn(['Created', 'To Do', 'In Progress', 'Review', 'Done', 'Closed'])
+      .withMessage('Invalid status value'),
+    query('priority')
+      .optional()
+      .isIn(['Low', 'Medium', 'High', 'Urgent'])
+      .withMessage('Invalid priority value'),
+    query('type')
+      .optional()
+      .isIn(['Task', 'Bug', 'Improvement', 'Subtask'])
+      .withMessage('Invalid task type'),
+    query('labelId').optional().isUUID().withMessage('labelId must be a valid UUID'),
+    query('sprintId').optional().isUUID().withMessage('sprintId must be a valid UUID'),
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('limit must be between 1 and 100'),
+    query('offset').optional().isInt({ min: 0 }).withMessage('offset must be 0 or greater'),
+    validateRequest
+  ],
+  authenticateToken,
+  taskController.getAllTasks
+);
+
+//
+// ─── 2) FETCH SINGLE TASK BY ID ──────────────────────────────────────────────────
+//
+
+/**
+ * @route   GET /api/tasks/:id
+ * @desc    Get one task by its ID
+ * @access  Private (any authenticated role)
+ */
+router.get(
+  '/tasks/:id',
+  [
+    param('id').isUUID().withMessage('id must be a valid UUID'),
+    validateRequest
+  ],
+  authenticateToken,
+  taskController.getTaskById
+);
 
 // @route   POST /api/tasks
 // @desc    Create a new task

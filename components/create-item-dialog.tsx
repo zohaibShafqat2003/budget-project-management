@@ -1,478 +1,357 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
-import { CalendarIcon, Loader2 } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { 
-  Project, 
-  Epic, 
-  Story, 
-  Task, 
-  User,
-  createEpic, 
-  createStory, 
-  createTask 
-} from "@/lib/db"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Project, Epic, Story, Task, User, Sprint, createEpic, createStory, createTask } from "@/lib/db"
+import { ensureString } from "@/lib/utils"
+import { useToast } from "@/components/ui/use-toast"
 
-// Define the types of items that can be created
-export type CreatableItemType = 'Epic' | 'Story' | 'Task' | 'Bug' | 'Subtask';
-// Define specific status types for Epic if they differ, e.g.:
-export type EpicStatus = 'To Do' | 'In Progress' | 'Done'; // from Epic interface
-export type StoryStatus = 'Backlog' | 'To Do' | 'In Progress' | 'In Review' | 'Done' | 'Blocked'; // from Story interface
-export type TaskStatus = 'Backlog' | 'To Do' | 'In Progress' | 'In Review' | 'Done' | 'Blocked'; // from Task interface
+export type CreatableItemType = 'Epic' | 'Story' | 'Task'
 
-interface CreateItemDialogProps {
+type CommonProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onItemCreated: (item: Epic | Story | Task) => void // Callback for when any item is created
-  
-  // Contextual data passed from the parent page
+  onItemCreated: (item: Epic | Story | Task) => void
   projectId: string | null
-  sprintId?: string | null // Optional, relevant for Stories/Tasks
-  
-  // Lists for populating dropdowns
-  projects: Project[] // All projects for selection if no specific projectId is set
-  epics: Epic[]       // Epics for the selected project (for linking stories/tasks)
-  projectStories: Story[] // Stories for the selected project (for linking tasks)
-  users: User[]       // Users for assignment
-  reporterId?: string  // Optional: if creating on behalf of someone, or prefill current user
+  sprintId: string | null
+  projects: Project[]
+  epics: Epic[]
+  projectStories: Story[]
+  users: User[]
+  initialDefaults?: { [key: string]: any }
+}
 
-  // New props for initial type and default values
-  itemType?: CreatableItemType;      // Optional initial item type
-  initialDefaults?: { [key: string]: any }; // Optional initial default values
+interface CreateItemDialogProps extends CommonProps {
+  itemType: CreatableItemType
 }
 
 export function CreateItemDialog({ 
   open, 
   onOpenChange, 
   onItemCreated,
-  projectId: currentProjectId,
+  projectId,
   sprintId,
   projects,
   epics,
   projectStories,
   users,
-  reporterId: defaultReporterId,
-  itemType: initialItemType,     // Destructure new prop
-  initialDefaults             // Destructure new prop
+  itemType = 'Story',
+  initialDefaults = {}
 }: CreateItemDialogProps) {
+  const { toast } = useToast()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [activeType, setActiveType] = useState<CreatableItemType>(itemType)
   
-  const [itemType, setItemType] = useState<CreatableItemType>(initialItemType || "Task")
+  // Epic form state
+  const [epicName, setEpicName] = useState("")
+  const [epicDescription, setEpicDescription] = useState("")
+  const [epicStatus, setEpicStatus] = useState<Epic['status']>("To Do")
+  const [epicProjectId, setEpicProjectId] = useState<string | null>(projectId)
   
-  // Common fields
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null) // Will be set by useEffect or prop
-  const [assigneeId, setAssigneeId] = useState<string>("")
-  const [reporterId, setReporterId] = useState<string>(defaultReporterId || "") 
-  const [priority, setPriority] = useState<Task['priority'] | Story['priority']>("Medium") 
+  // Story form state
+  const [storyTitle, setStoryTitle] = useState("")
+  const [storyDescription, setStoryDescription] = useState("")
+  const [storyPoints, setStoryPoints] = useState<number | undefined>(undefined)
+  const [storyStatus, setStoryStatus] = useState<Story['status']>("Backlog")
+  const [storyPriority, setStoryPriority] = useState<Story['priority']>("Medium")
+  const [storyProjectId, setStoryProjectId] = useState<string | null>(projectId)
+  const [storyEpicId, setStoryEpicId] = useState<string | null>(null)
+  const [storySprintId, setStorySprintId] = useState<string | null>(sprintId)
+  const [storyIsReady, setStoryIsReady] = useState(false)
+  const [storyAssigneeId, setStoryAssigneeId] = useState<string | null>(null)
   
-  // Item-specific status states
-  const [epicStatus, setEpicStatus] = useState<EpicStatus>('To Do');
-  const [storyStatus, setStoryStatus] = useState<StoryStatus>('Backlog');
-  const [taskStatus, setTaskStatus] = useState<TaskStatus>('To Do');
+  // Task form state
+  const [taskTitle, setTaskTitle] = useState("")
+  const [taskDescription, setTaskDescription] = useState("")
+  const [taskStatus, setTaskStatus] = useState<Task['status']>("To Do")
+  const [taskPriority, setTaskPriority] = useState<Task['priority']>("Medium")
+  const [taskType, setTaskType] = useState<Task['type']>("Task")
+  const [taskEstimatedHours, setTaskEstimatedHours] = useState<number | undefined>(undefined)
+  const [taskProjectId, setTaskProjectId] = useState<string | null>(projectId)
+  const [taskStoryId, setTaskStoryId] = useState<string | null>(null)
+  const [taskAssigneeId, setTaskAssigneeId] = useState<string | null>(null)
 
-  // Item-specific linking and data fields
-  const [selectedEpicId, setSelectedEpicId] = useState<string>("") // For Story, Task, Bug, Subtask if linking to Epic
-  const [selectedStoryId, setSelectedStoryId] = useState<string>("") // For Task, Bug, Subtask if child of story
-  const [storyPoints, setStoryPoints] = useState<string>("") // For Story
-  const [dueDate, setDueDate] = useState<Date | undefined>()
-  const [labels, setLabels] = useState<string>("")
-  const [estimatedHours, setEstimatedHours] = useState<string>("")
-
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (currentProjectId) {
-      setSelectedProjectId(currentProjectId);
-    } else if (projects.length > 0) {
-      setSelectedProjectId(projects[0].id);
-    } else {
-      setSelectedProjectId(null); // Explicitly null if no project context
-    }
-  }, [currentProjectId, projects]);
-
+  // Reset form values when dialog opens/closes
   useEffect(() => {
     if (open) {
-      // When dialog opens, set projectId from props first
-      if (currentProjectId) {
-        setSelectedProjectId(currentProjectId);
-      } else if (projects.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(projects[0].id);
-      }
-      // Set initial item type if provided
-      if (initialItemType) {
-        setItemType(initialItemType);
-      }
-      resetFormFields(); // This will now also apply initialDefaults
-    }
-  }, [open, currentProjectId, projects, initialItemType]); // initialItemType added
-
-  useEffect(() => {
-    // When itemType or initialDefaults change (e.g. dialog re-opened for different item from backlog)
-    // reset form fields and apply new defaults.
-    resetFormFields(); 
-    if(currentProjectId) setSelectedProjectId(currentProjectId);
-    
-    // Apply initialDefaults when the dialog opens or these defaults change
-    if (initialDefaults) {
-      if (initialDefaults.projectId) setSelectedProjectId(initialDefaults.projectId as string);
-      if (initialDefaults.epicId) setSelectedEpicId(initialDefaults.epicId as string);
-      if (initialDefaults.storyId) setSelectedStoryId(initialDefaults.storyId as string);
-      // Add other defaults as needed, e.g., pre-filling title if applicable
-      // setTitle(initialDefaults.title || ""); 
-    }
-
-  }, [itemType, currentProjectId, initialDefaults]); // initialDefaults added
-
-
-  const resetFormFields = () => {
-    setTitle(initialDefaults?.title || ""); // Apply default title if present
-    setDescription(initialDefaults?.description || "");
-    setAssigneeId(initialDefaults?.assigneeId || "");
-    setReporterId(initialDefaults?.reporterId || defaultReporterId || "");
-    setPriority(initialDefaults?.priority || "Medium");
-    setLabels(initialDefaults?.labels ? (initialDefaults.labels as string[]).join(", ") : "");
-    setDueDate(initialDefaults?.dueDate ? new Date(initialDefaults.dueDate) : undefined);
-    
-    setSelectedEpicId(initialDefaults?.epicId || "");
-    setSelectedStoryId(initialDefaults?.storyId || "");
-    setStoryPoints(initialDefaults?.points?.toString() || "");
-    setEstimatedHours(initialDefaults?.estimatedHours?.toString() || "");
-
-    // Set default statuses based on item type, potentially overridden by initialDefaults
-    switch(itemType) {
-      case 'Epic':
-        setEpicStatus(initialDefaults?.status || 'To Do');
-        break;
-      case 'Story':
-        setStoryStatus(initialDefaults?.status || 'Backlog');
-        // If a sprintId is in defaults (e.g. creating story for specific sprint from backlog)
-        // it's handled by the sprintId prop directly in handleSubmit for createStory
-        break;
-      default: // Task, Bug, Subtask
-        setTaskStatus(initialDefaults?.status || 'To Do');
-        break;
-    }
-    setError(null);
-    // Clear defaults after applying them once, so they don't persist if form is manually changed
-    // This might be too aggressive, consider if defaults should persist until dialog close.
-    // For now, they reset if itemType changes or dialog re-opens with new defaults.
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!title.trim()) {
-      setError("Title is required.");
-      return;
-    }
-    if (!selectedProjectId) {
-      setError("Project selection is required.");
-      return;
-    }
-
-    setSubmitting(true)
-    setError(null)
-
-    try {
-      let newItem: Epic | Story | Task;
-      const parsedLabels = labels ? labels.split(',').map(label => label.trim()) : [];
-
-      switch (itemType) {
-        case 'Epic':
-          newItem = await createEpic(selectedProjectId, { 
-            name: title, 
-            description, 
-            status: epicStatus,
-            // startDate, endDate if we add them to form
-          });
-          break;
-        case 'Story':
-          if (!selectedEpicId) {
-             setError("An Epic is required to create a Story.");
-             setSubmitting(false);
-             return;
-          }
-          newItem = await createStory(selectedEpicId, { 
-            projectId: selectedProjectId,
-            title, 
-            description, 
-            status: storyStatus, 
-            priority, 
-            points: storyPoints ? parseInt(storyPoints) : undefined, 
-            assigneeId: assigneeId || undefined,
-            reporterId: reporterId || undefined,
-            sprintId: sprintId || undefined, // Assign to current sprint if provided
-            labels: parsedLabels,
-            isReady: false, // Default value for isReady
-          });
-          break;
-        case 'Task':
-        case 'Bug':
-        case 'Subtask':
-          if (!selectedStoryId && !selectedEpicId) {
-            setError("A parent Story or Epic is required for this item type.");
-            setSubmitting(false);
-            return;
-          }
-          newItem = await createTask({ 
-            projectId: selectedProjectId,
-            title,
-            description,
-            type: itemType,
-            status: taskStatus,
-            priority,
-            assigneeId: assigneeId || undefined,
-            reporterId: reporterId || undefined,
-            epicId: selectedEpicId || undefined,
-            storyId: selectedStoryId || undefined, // Link to story if selected, otherwise epic
-            dueDate,
-            labels: parsedLabels,
-            estimatedHours: estimatedHours ? parseFloat(estimatedHours) : undefined,
-          });
-          break;
-        default:
-          // Should not happen with CreatableItemType
-          const exhaustiveCheck: never = itemType;
-          throw new Error(`Invalid item type: ${exhaustiveCheck}`);
-      }
+      setActiveType(itemType)
       
-      onItemCreated(newItem);
-      onOpenChange(false);
+      // Set defaults from props
+      if (initialDefaults) {
+        // Epic defaults
+        if (initialDefaults.epicId) {
+          setStoryEpicId(initialDefaults.epicId)
+        }
+        
+        // Project defaults
+        if (initialDefaults.projectId) {
+          setEpicProjectId(initialDefaults.projectId)
+          setStoryProjectId(initialDefaults.projectId)
+          setTaskProjectId(initialDefaults.projectId)
+        } else if (projectId) {
+          setEpicProjectId(projectId)
+          setStoryProjectId(projectId)
+          setTaskProjectId(projectId)
+        }
+        
+        // Story defaults
+        if (initialDefaults.storyId) {
+          setTaskStoryId(initialDefaults.storyId)
+        }
+        
+        // Sprint defaults
+        if (initialDefaults.sprintId) {
+          setStorySprintId(initialDefaults.sprintId)
+          setStoryStatus("To Do") // When adding to sprint, set status to To Do instead of Backlog
+        } else if (sprintId) {
+          setStorySprintId(sprintId)
+          setStoryStatus("To Do")
+        }
+      }
+    } else {
+      // Reset all form values when dialog closes
+      resetForms()
+    }
+  }, [open, itemType, projectId, sprintId, initialDefaults])
 
-    } catch (err) {
-      console.error("Failed to create item:", err)
-      setError(`Failed to create item. ${err instanceof Error ? err.message : 'Please try again.'}`)
+  const resetForms = () => {
+    // Reset Epic form
+    setEpicName("")
+    setEpicDescription("")
+    setEpicStatus("To Do")
+    
+    // Reset Story form
+    setStoryTitle("")
+    setStoryDescription("")
+    setStoryPoints(undefined)
+    setStoryStatus("Backlog")
+    setStoryPriority("Medium")
+    setStoryEpicId(null)
+    setStoryIsReady(false)
+    setStoryAssigneeId(null)
+    
+    // Reset Task form
+    setTaskTitle("")
+    setTaskDescription("")
+    setTaskStatus("To Do")
+    setTaskPriority("Medium")
+    setTaskType("Task")
+    setTaskEstimatedHours(undefined)
+    setTaskStoryId(null)
+    setTaskAssigneeId(null)
+    
+    // Reset submission state
+    setIsSubmitting(false)
+  }
+
+  const handleCreateEpic = async () => {
+    if (!epicProjectId) {
+      toast({
+        title: "Project ID Missing",
+        description: "Cannot create epic without a project ID.",
+        variant: "destructive"
+      })
+      setIsSubmitting(false)
+      return
+    }
+    
+    if (!epicName.trim()) {
+      toast({
+        title: "Missing Name",
+        description: "Please provide a name for the epic.",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    setIsSubmitting(true)
+    
+    try {
+      const newEpic = await createEpic(epicProjectId, {
+        name: epicName,
+        description: epicDescription,
+        status: epicStatus,
+      })
+      
+      onItemCreated(newEpic)
+      toast({
+        title: "Epic Created",
+        description: `Epic "${newEpic.name}" has been created successfully.`
+      })
+      
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Failed to create epic:", error)
+      toast({
+        title: "Failed to Create Epic",
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        variant: "destructive"
+      })
     } finally {
-      setSubmitting(false)
+      setIsSubmitting(false)
     }
   }
 
-  const showProjectSelector = !currentProjectId || projects.length > 1;
-
-  // Filter epics based on selected project
-  const availableEpics = selectedProjectId ? epics.filter(e => e.projectId === selectedProjectId) : [];
-  // Filter stories based on selected project (and optionally selected epic if implementing cascading dropdowns)
-  const availableStories = selectedProjectId ? projectStories.filter(s => s.projectId === selectedProjectId && (selectedEpicId ? s.epicId === selectedEpicId : true)) : [];
-
-
-  const renderItemSpecificFields = () => {
-    switch (itemType) {
-      case 'Epic':
-        return (
-          <div className="grid gap-3">
-            <Label htmlFor="item-status-epic">Status</Label>
-            <Select value={epicStatus} onValueChange={(value) => setEpicStatus(value as EpicStatus)}>
-              <SelectTrigger id="item-status-epic"><SelectValue placeholder="Select status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="To Do">To Do</SelectItem>
-                <SelectItem value="In Progress">In Progress</SelectItem>
-                <SelectItem value="Done">Done</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        );
-      case 'Story':
-        return (
-          <>
-            <div className="grid gap-3">
-              <Label htmlFor="item-epic">Parent Epic</Label>
-              <Select value={selectedEpicId} onValueChange={setSelectedEpicId} required>
-                <SelectTrigger id="item-epic"><SelectValue placeholder="Select parent epic" /></SelectTrigger>
-                <SelectContent>
-                  {availableEpics.length === 0 && <SelectItem value="" disabled>No epics in project</SelectItem>}
-                  {availableEpics.map(epic => (
-                    <SelectItem key={epic.id} value={epic.id}>{epic.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-3">
-              <Label htmlFor="item-status-story">Status</Label>
-              <Select value={storyStatus} onValueChange={(value) => setStoryStatus(value as StoryStatus)}>
-                <SelectTrigger id="item-status-story"><SelectValue placeholder="Select status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Backlog">Backlog</SelectItem>
-                  <SelectItem value="To Do">To Do</SelectItem>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="In Review">In Review</SelectItem>
-                  <SelectItem value="Done">Done</SelectItem>
-                  <SelectItem value="Blocked">Blocked</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-3">
-              <Label htmlFor="item-story-points">Story Points</Label>
-              <Input 
-                id="item-story-points"
-                type="number"
-                placeholder="Enter story points"
-                value={storyPoints}
-                onChange={(e) => setStoryPoints(e.target.value)}
-              />
-            </div>
-          </>
-        );
-      case 'Task':
-      case 'Bug':
-      case 'Subtask':
-        return (
-          <>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-3">
-                <Label htmlFor="item-parent-epic">Parent Epic (Optional)</Label>
-                <Select value={selectedEpicId} onValueChange={setSelectedEpicId}>
-                    <SelectTrigger id="item-parent-epic"><SelectValue placeholder="Select parent epic" /></SelectTrigger>
-                    <SelectContent>
-                    <SelectItem value="">None</SelectItem>
-                    {availableEpics.map(epic => (
-                        <SelectItem key={epic.id} value={epic.id}>{epic.name}</SelectItem>
-                    ))}
-                    </SelectContent>
-                </Select>
-                </div>
-                <div className="grid gap-3">
-                <Label htmlFor="item-parent-story">Parent Story (Optional)</Label>
-                <Select value={selectedStoryId} onValueChange={setSelectedStoryId} disabled={!selectedEpicId && availableStories.filter(s => !s.epicId).length === 0} >
-                    <SelectTrigger id="item-parent-story"><SelectValue placeholder="Select parent story" /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="">None</SelectItem>
-                        {/* Show stories from selected epic, or project-level stories if no epic selected */}
-                        {availableStories
-                          .filter(story => selectedEpicId ? story.epicId === selectedEpicId : true)
-                          .map(story => (
-                            <SelectItem key={story.id} value={story.id}>{story.title}</SelectItem>
-                        ))}
-                         {availableStories.filter(story => selectedEpicId ? story.epicId === selectedEpicId : true).length === 0 && <SelectItem value="" disabled>No stories available</SelectItem>}
-                    </SelectContent>
-                </Select>
-                </div>
-            </div>
-            <div className="grid gap-3">
-              <Label htmlFor="item-status-task">Status</Label>
-              <Select value={taskStatus} onValueChange={(value) => setTaskStatus(value as TaskStatus)}>
-                <SelectTrigger id="item-status-task"><SelectValue placeholder="Select status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Backlog">Backlog</SelectItem>
-                  <SelectItem value="To Do">To Do</SelectItem>
-                  <SelectItem value="In Progress">In Progress</SelectItem>
-                  <SelectItem value="In Review">In Review</SelectItem>
-                  <SelectItem value="Done">Done</SelectItem>
-                  <SelectItem value="Blocked">Blocked</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-3">
-                    <Label htmlFor="item-estimated-hours">Estimated Hours</Label>
-                    <Input 
-                    id="item-estimated-hours"
-                    type="number"
-                    placeholder="e.g., 4"
-                    value={estimatedHours}
-                    onChange={(e) => setEstimatedHours(e.target.value)}
-                    />
-                </div>
-                <div className="grid gap-3">
-                <Label htmlFor="item-due-date">Due Date</Label>
-                <Popover>
-                    <PopoverTrigger asChild>
-                    <Button
-                        variant={"outline"}
-                        className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !dueDate && "text-muted-foreground"
-                        )}
-                    >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dueDate ? format(dueDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                    <Calendar
-                        mode="single"
-                        selected={dueDate}
-                        onSelect={setDueDate}
-                        initialFocus
-                    />
-                    </PopoverContent>
-                </Popover>
-                </div>
-            </div>
-          </>
-        );
-      default:
-        return null;
+  const handleCreateStory = async () => {
+    if (!storyProjectId) {
+      toast({
+        title: "Project ID Missing",
+        description: "Cannot create story without a project ID.",
+        variant: "destructive"
+      })
+      setIsSubmitting(false)
+      return
     }
-  };
+    
+    if (!storyTitle.trim()) {
+      toast({
+        title: "Missing Title",
+        description: "Please provide a title for the story.",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    setIsSubmitting(true)
+    
+    try {
+      const newStory = await createStory(storyProjectId, {
+        title: storyTitle,
+        description: storyDescription,
+        points: storyPoints,
+        status: storyStatus,
+        priority: storyPriority,
+        isReady: storyIsReady,
+        assigneeId: storyAssigneeId || undefined,
+        projectId: storyProjectId
+      })
+      
+      onItemCreated(newStory)
+      toast({
+        title: "Story Created",
+        description: `Story "${newStory.title}" has been created successfully.`
+      })
+      
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Failed to create story:", error)
+      toast({
+        title: "Failed to Create Story",
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCreateTask = async () => {
+    if (!taskProjectId) {
+      toast({
+        title: "Missing Project",
+        description: "Please select a project for this task.",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    if (!taskTitle.trim()) {
+      toast({
+        title: "Missing Title",
+        description: "Please provide a title for the task.",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    setIsSubmitting(true)
+    
+    try {
+      const newTask = await createTask({
+        title: taskTitle,
+        description: taskDescription,
+            status: taskStatus,
+        priority: taskPriority,
+        type: taskType,
+        estimatedHours: taskEstimatedHours,
+        projectId: taskProjectId,
+        storyId: taskStoryId || undefined,
+        assigneeId: taskAssigneeId || undefined
+      })
+      
+      onItemCreated(newTask)
+      toast({
+        title: "Task Created",
+        description: `${taskType} "${newTask.title}" has been created successfully.`
+      })
+      
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Failed to create task:", error)
+      toast({
+        title: "Failed to Create Task",
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    switch (activeType) {
+      case "Epic":
+        await handleCreateEpic()
+        break
+      case "Story":
+        await handleCreateStory()
+        break
+      case "Task":
+        await handleCreateTask()
+        break
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => {
-      onOpenChange(isOpen);
-      if (!isOpen) resetFormFields();
-    }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>Create New Item</DialogTitle>
-            <DialogDescription>Add a new Epic, Story, Task, Bug, or Subtask to your project.</DialogDescription>
-          </DialogHeader>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4" role="alert">
-              {error}
-            </div>
-          )}
-
-          <div className="grid gap-6 py-4 max-h-[70vh] overflow-y-auto pr-2">
-            {/* Item Type Selector */}
-            <div className="grid gap-3">
-              <Label htmlFor="item-type">Item Type</Label>
-              <Select value={itemType} onValueChange={(value) => setItemType(value as CreatableItemType)}>
-                <SelectTrigger id="item-type">
-                  <SelectValue placeholder="Select item type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Epic">Epic</SelectItem>
-                  <SelectItem value="Story">Story</SelectItem>
-                  <SelectItem value="Task">Task</SelectItem>
-                  <SelectItem value="Bug">Bug</SelectItem>
-                  <SelectItem value="Subtask">Subtask</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Project Selector - show if no specific project context or multiple projects */}
-            {showProjectSelector && (
-              <div className="grid gap-3">
-                <Label htmlFor="project">Project</Label>
+        <DialogHeader>
+          <DialogTitle>Create New Item</DialogTitle>
+          <DialogDescription>
+            Add a new item to your project. Fill in the required information and click Create when done.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <Tabs value={activeType} onValueChange={(value) => setActiveType(value as CreatableItemType)} className="w-full">
+          <TabsList className="grid grid-cols-3 mb-4">
+            <TabsTrigger value="Epic">Epic</TabsTrigger>
+            <TabsTrigger value="Story">Story</TabsTrigger>
+            <TabsTrigger value="Task">Task</TabsTrigger>
+          </TabsList>
+          
+          {/* Epic Form */}
+          <TabsContent value="Epic" className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="epic-project">Project *</Label>
                 <Select 
-                  value={selectedProjectId || ""} 
-                  onValueChange={setSelectedProjectId}
-                  disabled={projects.length === 0 || (projects.length === 1 && !!currentProjectId)} >
-                  <SelectTrigger id="project">
-                    <SelectValue placeholder="Select project" />
+                  value={epicProjectId || ""} 
+                  onValueChange={setEpicProjectId}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="epic-project">
+                    <SelectValue placeholder="Select a project" />
                   </SelectTrigger>
                   <SelectContent>
-                    {projects.map((project) => (
+                    {projects.map(project => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name}
                       </SelectItem>
@@ -480,98 +359,430 @@ export function CreateItemDialog({
                   </SelectContent>
                 </Select>
               </div>
-            )}
 
-            {/* Common Fields: Title, Description */}
-            <div className="grid gap-3">
-              <Label htmlFor="item-title">Title</Label>
+              <div className="space-y-2">
+                <Label htmlFor="epic-name">Epic Name *</Label>
+                <Input
+                  id="epic-name"
+                  value={epicName}
+                  onChange={(e) => setEpicName(e.target.value)}
+                  placeholder="e.g., User Authentication"
+                  disabled={isSubmitting}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="epic-description">Description</Label>
+                <Textarea
+                  id="epic-description"
+                  value={epicDescription}
+                  onChange={(e) => setEpicDescription(e.target.value)}
+                  placeholder="Describe this epic..."
+                  rows={3}
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="epic-status">Status</Label>
+                <Select 
+                  value={epicStatus} 
+                  onValueChange={(value) => setEpicStatus(value as Epic['status'])}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="epic-status">
+                    <SelectValue />
+                  </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="To Do">To Do</SelectItem>
+                <SelectItem value="In Progress">In Progress</SelectItem>
+                <SelectItem value="Done">Done</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+            </div>
+          </TabsContent>
+          
+          {/* Story Form */}
+          <TabsContent value="Story" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="story-project">Project *</Label>
+                <Select 
+                  value={storyProjectId || ""} 
+                  onValueChange={setStoryProjectId}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="story-project">
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                <SelectContent>
+                    {projects.map(project => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="story-epic">Epic</Label>
+                <Select 
+                  value={storyEpicId || ""} 
+                  onValueChange={setStoryEpicId}
+                  disabled={isSubmitting || !storyProjectId}
+                >
+                  <SelectTrigger id="story-epic">
+                    <SelectValue placeholder="Select an epic (optional)" />
+                  </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="">None (Standalone Story)</SelectItem>
+                    {epics
+                      .filter(epic => epic.projectId === storyProjectId)
+                      .map(epic => (
+                        <SelectItem key={epic.id} value={epic.id}>
+                          {epic.name}
+                        </SelectItem>
+                      ))
+                    }
+                </SelectContent>
+              </Select>
+            </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="story-title">Story Title *</Label>
+              <Input 
+                  id="story-title"
+                  value={storyTitle}
+                  onChange={(e) => setStoryTitle(e.target.value)}
+                  placeholder="e.g., As a user, I want to reset my password"
+                  disabled={isSubmitting}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="story-description">Description</Label>
+                <Textarea
+                  id="story-description"
+                  value={storyDescription}
+                  onChange={(e) => setStoryDescription(e.target.value)}
+                  placeholder="Describe this user story..."
+                  rows={3}
+                  disabled={isSubmitting}
+              />
+            </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="story-points">Story Points</Label>
+                <Select
+                  value={storyPoints?.toString() || ""}
+                  onValueChange={(value) => setStoryPoints(value ? parseInt(value) : undefined)}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="story-points">
+                    <SelectValue placeholder="Select points (optional)" />
+                  </SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="">Not estimated</SelectItem>
+                    <SelectItem value="1">1 (XS)</SelectItem>
+                    <SelectItem value="2">2 (S)</SelectItem>
+                    <SelectItem value="3">3 (M)</SelectItem>
+                    <SelectItem value="5">5 (L)</SelectItem>
+                    <SelectItem value="8">8 (XL)</SelectItem>
+                    <SelectItem value="13">13 (XXL)</SelectItem>
+                    </SelectContent>
+                </Select>
+                </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="story-priority">Priority</Label>
+                <Select 
+                  value={storyPriority} 
+                  onValueChange={(value) => setStoryPriority(value as Story['priority'])}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="story-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="Highest">Highest</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                    <SelectItem value="Medium">Medium (Default)</SelectItem>
+                    <SelectItem value="Low">Low</SelectItem>
+                    <SelectItem value="Lowest">Lowest</SelectItem>
+                    </SelectContent>
+                </Select>
+                </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="story-status">Status</Label>
+                <Select 
+                  value={storyStatus} 
+                  onValueChange={(value) => setStoryStatus(value as Story['status'])}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="story-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Backlog">Backlog</SelectItem>
+                  <SelectItem value="To Do">To Do</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="In Review">In Review</SelectItem>
+                  <SelectItem value="Done">Done</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="story-sprint">Sprint</Label>
+                <Select 
+                  value={storySprintId || ""} 
+                  onValueChange={setStorySprintId}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="story-sprint">
+                    <SelectValue placeholder="Select a sprint (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Not assigned to sprint</SelectItem>
+                    {/* In a real app, you would fetch sprints based on the selected project */}
+                    {sprintId && (
+                      <SelectItem value={sprintId}>Current Sprint</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+            </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="story-assignee">Assignee</Label>
+                <Select 
+                  value={storyAssigneeId || ""} 
+                  onValueChange={setStoryAssigneeId}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="story-assignee">
+                    <SelectValue placeholder="Assign to (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="">Unassigned</SelectItem>
+                    {users.map(user => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+              <div className="space-y-2 flex items-center pt-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="story-ready" 
+                    checked={storyIsReady}
+                    onCheckedChange={(checked) => setStoryIsReady(checked === true)}
+                    disabled={isSubmitting}
+                  />
+                  <Label htmlFor="story-ready">
+                    Ready for development
+                  </Label>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+          
+          {/* Task Form */}
+          <TabsContent value="Task" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="task-project">Project *</Label>
+                <Select 
+                  value={taskProjectId || ""} 
+                  onValueChange={setTaskProjectId}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="task-project">
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map(project => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-story">Story</Label>
+                <Select 
+                  value={taskStoryId || ""} 
+                  onValueChange={setTaskStoryId}
+                  disabled={isSubmitting || !taskProjectId}
+                >
+                  <SelectTrigger id="task-story">
+                    <SelectValue placeholder="Select a story (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None (Standalone Task)</SelectItem>
+                    {projectStories
+                      .filter(story => story.projectId === taskProjectId)
+                      .map(story => (
+                        <SelectItem key={story.id} value={story.id}>
+                          {story.title}
+                        </SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="task-title">Task Title *</Label>
               <Input
-                id="item-title"
-                placeholder={`Enter ${itemType} title`}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                  id="task-title"
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  placeholder="e.g., Create password reset endpoint"
+                  disabled={isSubmitting}
                 required
               />
             </div>
-            <div className="grid gap-3">
-              <Label htmlFor="item-description">Description</Label>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="task-description">Description</Label>
               <Textarea
-                id="item-description"
-                placeholder={`Enter ${itemType} description`}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-[100px]"
+                  id="task-description"
+                  value={taskDescription}
+                  onChange={(e) => setTaskDescription(e.target.value)}
+                  placeholder="Describe this task..."
+                  rows={3}
+                  disabled={isSubmitting}
               />
             </div>
 
-            {/* Render dynamic fields based on itemType */}
-            {renderItemSpecificFields()}
-            
-            {/* Common fields like Priority, Assignee, Reporter, Labels below item-specific ones */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-3">
-                <Label htmlFor="item-priority">Priority</Label>
-                <Select value={priority} onValueChange={(value) => setPriority(value as Task['priority'])}>
-                  <SelectTrigger id="item-priority"><SelectValue placeholder="Select priority" /></SelectTrigger>
+              <div className="space-y-2">
+                <Label htmlFor="task-type">Task Type</Label>
+                <RadioGroup
+                  value={taskType}
+                  onValueChange={(value) => setTaskType(value as Task['type'])}
+                  className="flex space-x-4 pt-1"
+                  disabled={isSubmitting}
+                >
+                  <div className="flex items-center space-x-1">
+                    <RadioGroupItem value="Task" id="task-type-task" />
+                    <Label htmlFor="task-type-task">Task</Label>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <RadioGroupItem value="Bug" id="task-type-bug" />
+                    <Label htmlFor="task-type-bug">Bug</Label>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <RadioGroupItem value="Subtask" id="task-type-subtask" />
+                    <Label htmlFor="task-type-subtask">Subtask</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-hours">Estimated Hours</Label>
+                <Select
+                  value={taskEstimatedHours?.toString() || ""}
+                  onValueChange={(value) => setTaskEstimatedHours(value ? parseFloat(value) : undefined)}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="task-hours">
+                    <SelectValue placeholder="Estimated hours (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Not estimated</SelectItem>
+                    <SelectItem value="0.5">0.5 hrs</SelectItem>
+                    <SelectItem value="1">1 hr</SelectItem>
+                    <SelectItem value="2">2 hrs</SelectItem>
+                    <SelectItem value="4">4 hrs</SelectItem>
+                    <SelectItem value="6">6 hrs</SelectItem>
+                    <SelectItem value="8">8 hrs (1 day)</SelectItem>
+                    <SelectItem value="16">16 hrs (2 days)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-priority">Priority</Label>
+                <Select 
+                  value={taskPriority} 
+                  onValueChange={(value) => setTaskPriority(value as Task['priority'])}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="task-priority">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Highest">Highest</SelectItem>
                     <SelectItem value="High">High</SelectItem>
-                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="Medium">Medium (Default)</SelectItem>
                     <SelectItem value="Low">Low</SelectItem>
                     <SelectItem value="Lowest">Lowest</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid gap-3">
-                <Label htmlFor="item-assignee">Assignee</Label>
-                <Select value={assigneeId} onValueChange={setAssigneeId}>
-                    <SelectTrigger id="item-assignee"><SelectValue placeholder="Select assignee" /></SelectTrigger>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-status">Status</Label>
+                <Select 
+                  value={taskStatus} 
+                  onValueChange={(value) => setTaskStatus(value as Task['status'])}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="task-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="To Do">To Do</SelectItem>
+                    <SelectItem value="In Progress">In Progress</SelectItem>
+                    <SelectItem value="In Review">In Review</SelectItem>
+                    <SelectItem value="Done">Done</SelectItem>
+                    <SelectItem value="Blocked">Blocked</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="task-assignee">Assignee</Label>
+                <Select 
+                  value={taskAssigneeId || ""} 
+                  onValueChange={setTaskAssigneeId}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="task-assignee">
+                    <SelectValue placeholder="Assign to (optional)" />
+                  </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="">Unassigned</SelectItem>
                         {users.map(user => (
-                            <SelectItem key={user.id} value={user.id}>{user.firstName} {user.lastName}</SelectItem>
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName}
+                      </SelectItem>
                         ))}
                     </SelectContent>
                 </Select>
             </div>
             </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-3">
-                    <Label htmlFor="item-reporter">Reporter</Label>
-                    <Select value={reporterId} onValueChange={setReporterId}>
-                        <SelectTrigger id="item-reporter"><SelectValue placeholder="Select reporter" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="">None</SelectItem> {/* Or default to current user and make read-only? */}
-                            {users.map(user => (
-                                <SelectItem key={user.id} value={user.id}>{user.firstName} {user.lastName}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-                 <div className="grid gap-3">
-                    <Label htmlFor="item-labels">Labels <span className="text-xs text-muted-foreground">(comma-separated)</span></Label>
-                    <Input 
-                        id="item-labels"
-                        placeholder="e.g., frontend, bug, urgent"
-                        value={labels}
-                        onChange={(e) => setLabels(e.target.value)}
-                    />
-                </div>
-            </div>
-
-          </div>
-
-          <DialogFooter className="pt-6 border-t">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+          </TabsContent>
+        </Tabs>
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !selectedProjectId || !title.trim()}>
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
-              Create {itemType}
+          <Button onClick={handleSubmit} disabled={isSubmitting}>
+            {isSubmitting ? "Creating..." : "Create"}
             </Button>
           </DialogFooter>
-        </form>
       </DialogContent>
     </Dialog>
   )

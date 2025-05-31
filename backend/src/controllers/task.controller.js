@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 
 // Get all tasks
 exports.getAllTasks = async (req, res, next) => {
+  console.log('>>> HIT getAllTasks with query:', req.query);
   try {
     const { 
       projectId, storyId, assigneeId, status, 
@@ -74,6 +75,7 @@ exports.getAllTasks = async (req, res, next) => {
 
 // Get task by ID
 exports.getTaskById = async (req, res, next) => {
+  console.log('>>> HIT getTaskById with id:', req.params.id);
   try {
     const task = await Task.findByPk(req.params.id, {
       include: [

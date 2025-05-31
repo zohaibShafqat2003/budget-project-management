@@ -1,3 +1,6 @@
+// Define the base API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
 // Mock database implementation - replace with your preferred database
 interface MockUser {
   id: string;
@@ -260,9 +263,6 @@ class MockDatabase {
 
 export const db = new MockDatabase();
 
-// Import the API_URL from auth.ts
-import { API_URL } from './auth';
-
 // Project type definitions based on your backend model
 export interface Project {
   id: string;
@@ -319,6 +319,7 @@ export interface Task {
   projectId: string;
   epicId?: string;
   storyId?: string;
+  sprintId?: string;
   storyPoints?: number;
   assigneeId?: string;
   assignee?: User;
@@ -347,6 +348,89 @@ export interface TaskComment {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// Mock boards for testing
+const mockBoards: Board[] = [
+  {
+    id: "board-1",
+    projectId: "1",
+    name: "Development Board",
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+];
+
+// Mock sprints for testing
+const mockSprints: Sprint[] = [
+  {
+    id: "sprint-1",
+    boardId: "board-1",
+    projectId: "1",
+    name: "Sprint 1",
+    goal: "Complete initial features",
+    startDate: new Date(),
+    endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 2 weeks from now
+    status: "Active",
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+];
+
+// Mock epics for testing
+const mockEpics: Epic[] = [
+  {
+    id: "epic-1",
+    projectId: "1",
+    name: "User Authentication",
+    description: "Implement user authentication system",
+    status: "In Progress",
+    startDate: new Date(),
+    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+];
+
+// Mock stories for testing
+const mockStories: Story[] = [
+  {
+    id: "story-1",
+    epicId: "epic-1",
+    projectId: "1",
+    title: "User Registration",
+    description: "Implement user registration functionality",
+    status: "In Progress",
+    priority: "High",
+    points: 5,
+    isReady: true,
+    sprintId: "sprint-1",
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+];
+
+// Mock tasks for testing
+const mockTasks: Task[] = [
+  {
+    id: "task-1",
+    key: "PROJ-1",
+    title: "Setup User Authentication API",
+    description: "Implement user authentication endpoints",
+    status: "In Progress",
+    type: "Task",
+    priority: "High",
+    projectId: "1",
+    epicId: "epic-1",
+    storyId: "story-1",
+    sprintId: "sprint-1",
+    storyPoints: 3,
+    assigneeId: "user-1",
+    estimatedHours: 8,
+    actualHours: 4,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  }
+];
 
 // Projects API functions
 export async function getProjects(filters = {}): Promise<Project[]> {
@@ -721,280 +805,207 @@ export async function getUsers(): Promise<User[]> {
 // Tasks API functions
 export async function getTasks(filters = {}): Promise<Task[]> {
   try {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    // Build query string from filters
+    // Convert filters to query string
     const queryParams = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
-        queryParams.append(key, value.toString());
+        queryParams.append(key, String(value));
       }
     });
 
-    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    const response = await fetch(`${API_URL}/tasks${queryString}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to fetch tasks');
-    }
-
-    const data = await response.json();
-    return data.data;
+    const queryString = queryParams.toString();
+    return await fetchApi(`tasks?${queryString}`);
   } catch (error) {
-    console.error('Error fetching tasks:', error);
-    
-    // For development/demo, return mock data
-    return [
-      {
-        id: "task-1",
-        key: "PROJ-1",
-        title: "Create user authentication system",
-        description: "Implement secure user authentication with JWT",
-        status: "In Progress",
-        type: "Task",
-        priority: "High",
-        projectId: "project-1",
-        storyPoints: 5,
-        assigneeId: "user-1",
-        assignee: { id: "user-1", email: "john@example.com", firstName: "John", lastName: "Doe" },
-        labels: ["Backend", "Security"],
-        estimatedHours: 20,
-        actualHours: 10,
-        dueDate: new Date("2024-05-15"),
-        createdAt: new Date("2024-04-01"),
-        updatedAt: new Date("2024-04-05")
-      },
-      {
-        id: "task-2",
-        key: "PROJ-2",
-        title: "Design homepage layout",
-        description: "Create responsive design for the homepage",
-        status: "To Do",
-        type: "Story",
-        priority: "Medium",
-        projectId: "project-1",
-        storyPoints: 8,
-        assigneeId: "user-2",
-        assignee: { id: "user-2", email: "jane@example.com", firstName: "Jane", lastName: "Smith" },
-        labels: ["Design", "Frontend"],
-        estimatedHours: 15,
-        dueDate: new Date("2024-05-20"),
-        createdAt: new Date("2024-04-02"),
-        updatedAt: new Date("2024-04-02")
-      },
-      {
-        id: "task-3",
-        key: "PROJ-3",
-        title: "Setup CI/CD pipeline",
-        description: "Configure automated testing and deployment",
-        status: "Backlog",
-        type: "Task",
-        priority: "Medium",
-        projectId: "project-1",
-        storyPoints: 5,
-        labels: ["DevOps", "Infrastructure"],
-        createdAt: new Date("2024-04-03"),
-        updatedAt: new Date("2024-04-03")
-      },
-      {
-        id: "task-4",
-        key: "PROJ-4",
-        title: "Fix login form validation",
-        description: "Fix validation errors in the login form",
-        status: "In Review",
-        type: "Bug",
-        priority: "High",
-        projectId: "project-1",
-        storyPoints: 3,
-        assigneeId: "user-1",
-        assignee: { id: "user-1", email: "john@example.com", firstName: "John", lastName: "Doe" },
-        labels: ["Frontend", "Bug"],
-        estimatedHours: 4,
-        actualHours: 5,
-        createdAt: new Date("2024-04-04"),
-        updatedAt: new Date("2024-04-08")
-      },
-      {
-        id: "task-5",
-        key: "PROJ-5",
-        title: "User onboarding experience",
-        description: "Create a streamlined onboarding process for new users",
-        status: "Done",
-        type: "Epic",
-        priority: "Highest",
-        projectId: "project-1",
-        assigneeId: "user-2",
-        assignee: { id: "user-2", email: "jane@example.com", firstName: "Jane", lastName: "Smith" },
-        labels: ["UX", "Frontend"],
-        completedDate: new Date("2024-04-10"),
-        createdAt: new Date("2024-03-01"),
-        updatedAt: new Date("2024-04-10")
-      }
-    ];
+    console.error('Error fetching tasks, using mock data:', error);
+    // Apply filters to mock data
+    return mockTasks.filter(task => {
+      return Object.entries(filters).every(([key, value]) => {
+        // @ts-ignore - dynamic property access
+        return task[key] === value;
+      });
+    });
   }
 }
 
 export async function getTasksByProject(projectId: string): Promise<Task[]> {
-  return getTasks({ projectId });
+  try {
+    return await getTasks({ projectId });
+  } catch (error) {
+    console.error('Error fetching tasks by project, using mock data:', error);
+    return mockTasks.filter(t => t.projectId === projectId);
+  }
 }
 
 export async function getTaskById(id: string): Promise<Task> {
   try {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to fetch task');
-    }
-
-    const data = await response.json();
-    return data.data;
+    return await fetchApi(`tasks/${id}`);
   } catch (error) {
-    console.error('Error fetching task:', error);
-    
-    // For development/demo, return mock data
-    const mockTasks = await getTasks();
-    const task = mockTasks.find(task => task.id === id);
-    
-    if (!task) {
-      throw new Error('Task not found');
-    }
-    
-    return task;
+    console.error('Error fetching task, using mock data:', error);
+    return mockTasks.find(t => t.id === id) || {
+      id,
+      title: "Default Task",
+      description: "Default task description",
+      status: "To Do",
+      type: "Task",
+      priority: "Medium",
+      projectId: "1",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
   }
 }
 
 export async function createTask(taskData: Partial<Task>): Promise<Task> {
   try {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      throw new Error('No authentication token found');
+    // Determine the correct endpoint based on provided data
+    let endpoint = 'tasks';
+    if (taskData.projectId && !taskData.storyId) {
+      endpoint = `projects/${taskData.projectId}/tasks`;
+    } else if (taskData.storyId) {
+      endpoint = `stories/${taskData.storyId}/tasks`;
     }
 
-    const response = await fetch(`${API_URL}/tasks`, {
+    return await fetchApi(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
       body: JSON.stringify(taskData),
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to create task');
-    }
-
-    const data = await response.json();
-    return data.data;
   } catch (error) {
-    console.error('Error creating task:', error);
-    
-    // For development/demo, return mock data
-    const mockTask: Task = {
+    console.error('Error creating task, using mock data:', error);
+    const newTask: Task = {
       id: `task-${Date.now()}`,
-      key: `PROJ-${Math.floor(Math.random() * 1000)}`,
-      title: taskData.title || 'New Task',
-      description: taskData.description || '',
-      status: taskData.status || 'Backlog',
-      type: taskData.type || 'Task',
-      priority: taskData.priority || 'Medium',
-      projectId: taskData.projectId || 'project-1',
-      storyPoints: taskData.storyPoints,
+      key: `PROJ-${mockTasks.length + 1}`,
+      title: taskData.title || "New Task",
+      description: taskData.description || "",
+      status: taskData.status || "To Do",
+      type: taskData.type || "Task",
+      priority: taskData.priority || "Medium",
+      projectId: taskData.projectId || "1",
+      epicId: taskData.epicId,
+      storyId: taskData.storyId,
+      sprintId: taskData.sprintId,
       assigneeId: taskData.assigneeId,
-      assignee: taskData.assigneeId ? { id: taskData.assigneeId, email: "user@example.com", firstName: "Test", lastName: "User" } : undefined,
-      labels: taskData.labels || [],
       estimatedHours: taskData.estimatedHours,
-      dueDate: taskData.dueDate,
+      actualHours: taskData.actualHours,
+      estimatedCost: taskData.estimatedCost,
+      actualCost: taskData.actualCost,
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    
-    return mockTask;
+    mockTasks.push(newTask);
+    return newTask;
   }
 }
 
 export async function updateTask(id: string, taskData: Partial<Task>): Promise<Task> {
   try {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
+    return await fetchApi(`tasks/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(taskData),
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to update task');
-    }
-
-    const data = await response.json();
-    return data.data;
   } catch (error) {
-    console.error('Error updating task:', error);
-    
-    // For development/demo, update mock data
-    const existingTask = await getTaskById(id);
-    
-    if (!existingTask) {
-      throw new Error('Task not found');
+    console.error('Error updating task, using mock data:', error);
+    const taskIndex = mockTasks.findIndex(t => t.id === id);
+    if (taskIndex >= 0) {
+      mockTasks[taskIndex] = { ...mockTasks[taskIndex], ...taskData, updatedAt: new Date() };
+      return mockTasks[taskIndex];
     }
-    
-    const updatedTask = {
-      ...existingTask,
-      ...taskData,
-      updatedAt: new Date()
-    };
-    
-    return updatedTask;
+    throw new Error(`Task with id ${id} not found`);
   }
 }
 
 export async function deleteTask(id: string): Promise<void> {
   try {
-    const token = localStorage.getItem('authToken');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${API_URL}/tasks/${id}`, {
+    await fetchApi(`tasks/${id}`, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
     });
+  } catch (error) {
+    console.error('Error deleting task, using mock data:', error);
+    const taskIndex = mockTasks.findIndex(t => t.id === id);
+    if (taskIndex >= 0) {
+      mockTasks.splice(taskIndex, 1);
+    }
+  }
+}
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to delete task');
+// Add functions for task label management and dependencies
+export async function addLabelsToTask(taskId: string, labelIds: string[]): Promise<void> {
+  try {
+    const response = await fetchApi(`tasks/${taskId}/labels`, {
+      method: 'POST',
+      body: JSON.stringify({ labelIds }),
+    });
+    
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to add labels to task');
     }
   } catch (error) {
-    console.error('Error deleting task:', error);
-    // For development/demo, just log the error
+    console.error(`Error adding labels to task ${taskId}:`, error);
+    throw error;
+  }
+}
+
+export async function removeLabelsFromTask(taskId: string, labelIds: string[]): Promise<void> {
+  try {
+    const response = await fetchApi(`tasks/${taskId}/labels`, {
+      method: 'DELETE',
+      body: JSON.stringify({ labelIds }),
+    });
+    
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to remove labels from task');
+    }
+  } catch (error) {
+    console.error(`Error removing labels from task ${taskId}:`, error);
+    throw error;
+  }
+}
+
+export async function assignTask(taskId: string, assigneeId?: string): Promise<Task> {
+  try {
+    const response = await fetchApi(`tasks/${taskId}/assign`, {
+      method: 'PUT',
+      body: JSON.stringify({ assigneeId }),
+    });
+    
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to assign task');
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error(`Error assigning task ${taskId}:`, error);
+    throw error;
+  }
+}
+
+export async function addTaskDependency(sourceTaskId: string, targetTaskId: string, type: string = 'blocks'): Promise<void> {
+  try {
+    const response = await fetchApi('tasks/dependencies', {
+      method: 'POST',
+      body: JSON.stringify({ sourceTaskId, targetTaskId, type }),
+    });
+    
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to add task dependency');
+    }
+  } catch (error) {
+    console.error(`Error adding dependency between tasks:`, error);
+    throw error;
+  }
+}
+
+export async function removeTaskDependency(dependencyId: string): Promise<void> {
+  try {
+    const response = await fetchApi(`tasks/dependencies/${dependencyId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to remove task dependency');
+    }
+  } catch (error) {
+    console.error(`Error removing task dependency:`, error);
+    throw error;
   }
 }
 
@@ -1007,22 +1018,16 @@ export async function addTaskComment(issueId: string, content: string): Promise<
 
     // Assuming a generic comments endpoint like /issues/{issueId}/comments
     // Adjust if your backend has specific routes like /tasks/{taskId}/comments
-    const response = await fetch(`${API_URL}/issues/${issueId}/comments`, { 
+    const response = await fetchApi(`issues/${issueId}/comments`, { 
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
       body: JSON.stringify({ content }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Failed to add comment');
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to add comment');
     }
 
-    const data = await response.json();
-    return data.data;
+    return response.data;
   } catch (error) {
     console.error('Error adding comment:', error);
     
@@ -1041,7 +1046,7 @@ export async function addTaskComment(issueId: string, content: string): Promise<
 
 export async function getTaskComments(issueId: string): Promise<TaskComment[]> {
     // Assuming a generic comments endpoint
-    return fetchApi(`${API_URL}/issues/${issueId}/comments`); 
+    return fetchApi(`issues/${issueId}/comments`); 
 }
 
 // New interfaces based on Postman spec
@@ -1101,42 +1106,52 @@ export interface Story {
 
 // Helper function for API calls
 async function fetchApi(url: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('authToken');
-  if (!token) {
-    // Allow some public endpoints or handle error as appropriate
-    // For now, most item-specific calls will need a token.
-    // throw new Error('No authentication token found');
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-    ...options.headers,
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (!response.ok) {
-    let errorData;
-    try {
-      errorData = await response.json();
-    } catch (e) {
-      // If response is not JSON, use status text
-      throw new Error(response.statusText || 'API request failed');
+  try {
+    // Get the auth token from localStorage
+    let token = '';
+    if (typeof window !== 'undefined') {
+      token = localStorage.getItem('authToken') || '';
     }
-    throw new Error(errorData?.message || errorData?.error || 'API request failed');
+
+    // If the URL doesn't start with http or /, add the base API URL
+    const fullUrl = url.startsWith('http') || url.startsWith('/') 
+      ? url 
+      : `${API_URL}/${url.startsWith('api/') ? url.substring(4) : url}`;
+
+    // Set up the headers with auth token and content type
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    };
+
+    // Make the request
+    const response = await fetch(fullUrl, {
+      ...options,
+      headers
+    });
+
+    // Handle API errors
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `API error: ${response.status} ${response.statusText}`);
+    }
+
+    // Parse the response
+    const data = await response.json();
+    
+    // If the API returns { success: true, data: [...] } format, extract the data
+    // Otherwise return the data directly
+    return data.data !== undefined ? data.data : data;
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
   }
-  // For DELETE or 204 No Content responses
-  if (response.status === 204) {
-    return null;
-  }
-  const responseData = await response.json();
-  return responseData.data; // Assuming backend wraps data in a 'data' field
 }
 
 // Board API functions
 export async function createBoard(projectId: string, boardData: { name: string; filterJQL?: string }): Promise<Board> {
-  return fetchApi(`${API_URL}/projects/${projectId}/boards`, {
+  return fetchApi(`projects/${projectId}/boards`, {
     method: 'POST',
     body: JSON.stringify(boardData),
   });
@@ -1145,11 +1160,27 @@ export async function createBoard(projectId: string, boardData: { name: string; 
 export async function getBoardById(boardId: string): Promise<Board> {
   // The Postman spec GET /boards/{{boardId}} implies boardId is globally unique or context is known.
   // Adjust if projectId is needed in path.
-  return fetchApi(`${API_URL}/boards/${boardId}`);
+  try {
+    return await fetchApi(`boards/${boardId}`);
+  } catch (error) {
+    console.error('Error fetching board, using mock data:', error);
+    return mockBoards.find(b => b.id === boardId) || {
+      id: boardId,
+      projectId: "1",
+      name: "Default Board",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
 }
 
 export async function getBoardsByProject(projectId: string): Promise<Board[]> {
-    return fetchApi(`${API_URL}/projects/${projectId}/boards`);
+  try {
+    return await fetchApi(`projects/${projectId}/boards`);
+  } catch (error) {
+    console.error('Error fetching boards, using mock data:', error);
+    return mockBoards.filter(b => b.projectId === projectId);
+  }
 }
 
 // Sprint API functions
@@ -1158,23 +1189,66 @@ export async function createSprint(
   boardId: string, 
   sprintData: { name: string; goal?: string; startDate: string; endDate: string; status: Sprint['status'] }
 ): Promise<Sprint> {
-  return fetchApi(`${API_URL}/projects/${projectId}/boards/${boardId}/sprints`, {
-    method: 'POST',
-    body: JSON.stringify(sprintData),
-  });
+  try {
+    return await fetchApi(`projects/${projectId}/boards/${boardId}/sprints`, {
+      method: 'POST',
+      body: JSON.stringify(sprintData),
+    });
+  } catch (error) {
+    console.error('Error creating sprint, using mock data:', error);
+    const newSprint: Sprint = {
+      id: `sprint-${Date.now()}`,
+      boardId,
+      projectId,
+      name: sprintData.name,
+      goal: sprintData.goal,
+      startDate: new Date(sprintData.startDate),
+      endDate: new Date(sprintData.endDate),
+      status: sprintData.status,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    mockSprints.push(newSprint);
+    return newSprint;
+  }
 }
 
 export async function getSprintById(sprintId: string): Promise<Sprint> {
   // Assuming sprintId is globally unique or context known.
-  return fetchApi(`${API_URL}/sprints/${sprintId}`);
+  try {
+    return await fetchApi(`sprints/${sprintId}`);
+  } catch (error) {
+    console.error('Error fetching sprint, using mock data:', error);
+    return mockSprints.find(s => s.id === sprintId) || {
+      id: sprintId,
+      boardId: "board-1",
+      projectId: "1",
+      name: "Default Sprint",
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+      status: "Active",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
 }
 
 export async function getSprintsByBoard(projectId: string, boardId: string): Promise<Sprint[]> {
-  return fetchApi(`${API_URL}/projects/${projectId}/boards/${boardId}/sprints`);
+  try {
+    return await fetchApi(`projects/${projectId}/boards/${boardId}/sprints`);
+  } catch (error) {
+    console.error('Error fetching sprints by board, using mock data:', error);
+    return mockSprints.filter(s => s.boardId === boardId && s.projectId === projectId);
+  }
 }
 
 export async function getSprintsByProject(projectId: string): Promise<Sprint[]> {
-    return fetchApi(`${API_URL}/projects/${projectId}/sprints`);
+  try {
+    return await fetchApi(`projects/${projectId}/sprints`);
+  } catch (error) {
+    console.error('Error fetching sprints by project, using mock data:', error);
+    return mockSprints.filter(s => s.projectId === projectId);
+  }
 }
 
 // Epic API functions
@@ -1182,23 +1256,58 @@ export async function createEpic(
   projectId: string, 
   epicData: { name: string; description?: string; status: Epic['status']; startDate?: string; endDate?: string }
 ): Promise<Epic> {
-  return fetchApi(`${API_URL}/projects/${projectId}/epics`, {
-    method: 'POST',
-    body: JSON.stringify(epicData),
-  });
+  try {
+    return await fetchApi(`projects/${projectId}/epics`, {
+      method: 'POST',
+      body: JSON.stringify(epicData),
+    });
+  } catch (error) {
+    console.error('Error creating epic, using mock data:', error);
+    const newEpic: Epic = {
+      id: `epic-${Date.now()}`,
+      projectId,
+      name: epicData.name,
+      description: epicData.description,
+      status: epicData.status,
+      startDate: epicData.startDate ? new Date(epicData.startDate) : undefined,
+      endDate: epicData.endDate ? new Date(epicData.endDate) : undefined,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    mockEpics.push(newEpic);
+    return newEpic;
+  }
 }
 
 export async function getEpicById(epicId: string): Promise<Epic> {
-  return fetchApi(`${API_URL}/epics/${epicId}`);
+  try {
+    return await fetchApi(`epics/${epicId}`);
+  } catch (error) {
+    console.error('Error fetching epic, using mock data:', error);
+    return mockEpics.find(e => e.id === epicId) || {
+      id: epicId,
+      projectId: "1",
+      name: "Default Epic",
+      description: "Default epic description",
+      status: "To Do",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
 }
 
 export async function getEpicsByProject(projectId: string): Promise<Epic[]> {
-  return fetchApi(`${API_URL}/projects/${projectId}/epics`);
+  try {
+    return await fetchApi(`projects/${projectId}/epics`);
+  } catch (error) {
+    console.error('Error fetching epics by project, using mock data:', error);
+    return mockEpics.filter(e => e.projectId === projectId);
+  }
 }
 
 // Story API functions
 export async function createStory(
-  epicId: string, 
+  projectId: string, 
   storyData: { 
     title: string; 
     description?: string; 
@@ -1208,37 +1317,88 @@ export async function createStory(
     priority: Story['priority']; 
     points?: number; 
     isReady?: boolean;
-    projectId: string; // Include projectId if not implicitly derived by backend from epic
+    projectId: string; 
+    epicId?: string; // Make epicId optional
   }
 ): Promise<Story> {
-  // If projectId is not part of storyData payload but derived from epicId on backend, remove from storyData.
-  // The Postman spec for creating story under epic implies epicId in path is sufficient.
-  return fetchApi(`${API_URL}/epics/${epicId}/stories`, {
-    method: 'POST',
-    body: JSON.stringify(storyData), // Ensure payload matches backend expectation
-  });
+  try {
+    const response = await fetchApi(`/projects/${projectId}/stories`, {
+      method: 'POST',
+      body: JSON.stringify(storyData)
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('Error creating story, using mock data:', error);
+    // Mock data return for development
+    const newStory: Story = {
+      id: `story-${Date.now()}`,
+      epicId: storyData.epicId || '', // Use empty string if epicId is not provided
+      projectId: storyData.projectId,
+      title: storyData.title,
+      description: storyData.description || '',
+      assigneeId: storyData.assigneeId,
+      status: storyData.status,
+      priority: storyData.priority,
+      points: storyData.points,
+      isReady: storyData.isReady || false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    mockStories.push(newStory);
+    return newStory;
+  }
 }
 
 export async function getStoryById(storyId: string): Promise<Story> {
-  return fetchApi(`${API_URL}/stories/${storyId}`);
+  try {
+    return await fetchApi(`stories/${storyId}`);
+  } catch (error) {
+    console.error('Error fetching story, using mock data:', error);
+    return mockStories.find(s => s.id === storyId) || {
+      id: storyId,
+      epicId: "epic-1",
+      projectId: "1",
+      title: "Default Story",
+      description: "Default story description",
+      status: "Backlog",
+      priority: "Medium",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
 }
 
 export async function getStoriesByEpic(epicId: string): Promise<Story[]> {
-  return fetchApi(`${API_URL}/epics/${epicId}/stories`);
+  try {
+    return await fetchApi(`epics/${epicId}/stories`);
+  } catch (error) {
+    console.error('Error fetching stories by epic, using mock data:', error);
+    return mockStories.filter(s => s.epicId === epicId);
+  }
 }
 
 export async function getStoriesByProject(
   projectId: string, 
   filters: { sprintId?: string } = {} // sprintId can be specific ID or "backlog"
 ): Promise<Story[]> {
-  const queryParams = new URLSearchParams();
-  if (filters.sprintId) queryParams.append('sprintId', filters.sprintId);
-  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
-  return fetchApi(`${API_URL}/projects/${projectId}/stories${queryString}`);
+  try {
+    const queryParams = new URLSearchParams();
+    if (filters.sprintId) queryParams.append('sprintId', filters.sprintId);
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return await fetchApi(`projects/${projectId}/stories${queryString}`);
+  } catch (error) {
+    console.error('Error fetching stories by project, using mock data:', error);
+    let filteredStories = mockStories.filter(s => s.projectId === projectId);
+    if (filters.sprintId) {
+      filteredStories = filteredStories.filter(s => s.sprintId === filters.sprintId);
+    }
+    return filteredStories;
+  }
 }
 
 export async function assignStoryToSprint(storyId: string, sprintId: string): Promise<Story> {
-  return fetchApi(`${API_URL}/stories/${storyId}/sprint`, {
+  return fetchApi(`stories/${storyId}/sprint`, {
     method: 'PUT', // Or POST, check backend
     body: JSON.stringify({ sprintId }),
   });
@@ -1251,7 +1411,7 @@ export async function updateStory(
 ): Promise<Story> {
   // The actual endpoint might be /api/stories/${storyId} or /api/projects/${projectId}/stories/${storyId}
   // Adjust based on Postman collection. Assuming /api/projects/${projectId}/stories/${storyId} for now.
-  return fetchApi(`${API_URL}/projects/${projectId}/stories/${storyId}`, {
+  return fetchApi(`projects/${projectId}/stories/${storyId}`, {
     method: 'PATCH', // Or PUT
     body: JSON.stringify(storyData),
   });
@@ -1259,7 +1419,7 @@ export async function updateStory(
 
 export async function deleteStory(projectId: string, storyId: string): Promise<void> {
   // Adjust endpoint based on Postman. Assuming /api/projects/${projectId}/stories/${storyId} for now.
-  await fetchApi(`${API_URL}/projects/${projectId}/stories/${storyId}`, {
+  await fetchApi(`projects/${projectId}/stories/${storyId}`, {
     method: 'DELETE',
   });
 }
@@ -1305,18 +1465,18 @@ export async function createBudgetItem(projectId: string, budgetItemData: {
     category: string;
     amount: number;
 }): Promise<BudgetItem> {
-    return fetchApi(`${API_URL}/projects/${projectId}/budgets`, {
+    return fetchApi(`projects/${projectId}/budgets`, {
         method: 'POST',
         body: JSON.stringify(budgetItemData),
     });
 }
 
 export async function getBudgetItems(projectId: string): Promise<BudgetItem[]> {
-    return fetchApi(`${API_URL}/projects/${projectId}/budgets`);
+    return fetchApi(`projects/${projectId}/budgets`);
 }
 
 export async function getBudgetSummary(projectId: string): Promise<BudgetSummary> {
-    return fetchApi(`${API_URL}/projects/${projectId}/budgets/summary`);
+    return fetchApi(`projects/${projectId}/budgets/summary`);
 }
 
 export async function createExpense(projectId: string, expenseData: {
@@ -1327,16 +1487,16 @@ export async function createExpense(projectId: string, expenseData: {
     paymentMethod?: string;
     date?: string; // API might expect ISO string
 }): Promise<Expense> {
-    return fetchApi(`${API_URL}/projects/${projectId}/expenses`, {
+    return fetchApi(`projects/${projectId}/expenses`, {
         method: 'POST',
         body: JSON.stringify(expenseData),
     });
 }
 
 export async function getExpensesByProject(projectId: string): Promise<Expense[]> {
-    return fetchApi(`${API_URL}/projects/${projectId}/expenses`);
+    return fetchApi(`projects/${projectId}/expenses`);
 }
 
 export async function getExpenseById(expenseId: string): Promise<Expense> {
-    return fetchApi(`${API_URL}/expenses/${expenseId}`);
+    return fetchApi(`expenses/${expenseId}`);
 }

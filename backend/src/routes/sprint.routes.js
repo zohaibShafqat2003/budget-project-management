@@ -134,6 +134,16 @@ router.get('/boards/:boardId/sprints', [
   validateRequest
 ], sprintController.getBoardSprints);
 
+// @route   GET /api/projects/:projectId/boards/:boardId/sprints
+// @desc    Get all sprints for a specific board within a project
+// @access  Private
+router.get('/projects/:projectId/boards/:boardId/sprints', [
+  param('projectId').isUUID(),
+  param('boardId').isUUID(),
+  query('status').optional().isIn(['Planning', 'Active', 'Completed', 'Cancelled']),
+  validateRequest
+], sprintController.getBoardSprints);
+
 // @route   GET /api/boards/:boardId/backlog
 // @desc    Get all stories not assigned to a sprint for this board
 // @access  Private

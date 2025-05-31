@@ -5,12 +5,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Filter, List, Kanban, CalendarRange, ChevronDown } from "lucide-react"
-import { KanbanBoard } from "@/components/kanban-board"
-import { TaskList } from "@/components/task-list"
-import { TaskBacklog } from "@/components/task-backlog"
-import { CreateTaskDialog } from "@/components/create-task-dialog"
+import { Plus, Search, Filter, List, Kanban, CalendarRange } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { Label } from "@/components/ui/label"
+import { CreatableItemType } from "@/components/create-item-dialog"
+import { CreateItemDialog } from "@/components/create-item-dialog"
+
+// Import the new components
+import { BoardView } from "./components/BoardView"
+import { BacklogView } from "./components/BacklogView"
+import { ListView } from "./components/ListView"
+import { SprintHeader } from "./components/SprintHeader"
+
+// Import types and API functions
 import {
   Project,
   Board,
@@ -28,22 +35,34 @@ import {
   getUsers,
   assignStoryToSprint,
   updateStory,
+  updateTask,
+  deleteStory,
+  deleteTask,
 } from "@/lib/db"
-import { Label } from "@/components/ui/label"
-import { CreateItemDialog, CreatableItemType } from "@/components/create-item-dialog"
+
+// Mock deleteEpic function since it's not exported from db.ts
+const deleteEpic = async (projectId: string, epicId: string): Promise<void> => {
+  console.log(`Deleting epic ${epicId} from project ${projectId}`)
+  // This is a mock function - in a real implementation, you would call the backend API
+  // In a production app, this should be implemented in lib/db.ts
+  throw new Error("deleteEpic not implemented")
+}
 
 export default function TasksPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const viewParam = searchParams.get("view")
   
+  // State for create item dialog
   const [showCreateItemDialog, setShowCreateItemDialog] = useState(false)
   const [createItemType, setCreateItemType] = useState<CreatableItemType>('Task')
   const [createItemDefaults, setCreateItemDefaults] = useState<{[key: string]: any}>({})
 
+  // Main view state
   const [view, setView] = useState(viewParam || "board")
   const [searchTerm, setSearchTerm] = useState("")
   
+  // Project and board state
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   
@@ -52,15 +71,19 @@ export default function TasksPage() {
   
   const [sprints, setSprints] = useState<Sprint[]>([])
   const [selectedSprintId, setSelectedSprintId] = useState<string | null>(null)
+  const [activeSprint, setActiveSprint] = useState<Sprint | null>(null)
 
+  // Data state
   const [epics, setEpics] = useState<Epic[]>([])
   const [projectStories, setProjectStories] = useState<Story[]>([])
   const [projectTasks, setProjectTasks] = useState<Task[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
 
+  // UI state
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Initial data loading
   useEffect(() => {
     async function fetchInitialData() {
       setLoading(true)
@@ -69,14 +92,16 @@ export default function TasksPage() {
         const [projectsData, usersData] = await Promise.all([
           getProjects(),
           getUsers()
-        ]);
+        ])
 
-        setProjects(projectsData);
-        setAllUsers(usersData);
+        setProjects(projectsData)
+        setAllUsers(usersData)
 
         if (projectsData.length > 0) {
-          const currentProjectId = projectsData[0].id;
-          setSelectedProjectId(currentProjectId)
+          // Check if there's a project ID in the URL
+          const projectIdParam = searchParams.get("projectId")
+          const initialProjectId = projectIdParam || projectsData[0].id
+          setSelectedProjectId(initialProjectId)
         } else {
           setLoading(false)
         }
@@ -87,8 +112,9 @@ export default function TasksPage() {
       }
     }
     fetchInitialData()
-  }, [])
+  }, [searchParams])
 
+  // Load project data when project changes
   useEffect(() => {
     if (!selectedProjectId) {
       setBoards([])
@@ -98,36 +124,75 @@ export default function TasksPage() {
       setSelectedBoardId(null)
       setSprints([])
       setSelectedSprintId(null)
+      setActiveSprint(null)
       setLoading(false)
-      return;
+      return
     }
 
     async function fetchProjectData() {
       setLoading(true)
       setError(null)
       try {
-        const boardsData = await getBoardsByProject(selectedProjectId!)
-        setBoards(boardsData)
-        if (boardsData.length > 0) {
-          const currentBoardId = boardsData[0].id;
-          setSelectedBoardId(currentBoardId) 
-          const sprintsData = await getSprintsByBoard(selectedProjectId!, currentBoardId)
-          setSprints(sprintsData)
-          if(sprintsData.length > 0) setSelectedSprintId(sprintsData[0].id); else setSelectedSprintId(null);
-        } else {
-          setSelectedBoardId(null)
-          setSprints([])
-          setSelectedSprintId(null)
+        // Get boards for the project
+        if (selectedProjectId) {
+          const boardsData = await getBoardsByProject(selectedProjectId)
+          setBoards(boardsData)
+        
+          // Check if there's a board ID in the URL
+          const boardIdParam = searchParams.get("boardId")
+          const initialBoardId = boardIdParam || (boardsData.length > 0 ? boardsData[0].id : null)
+        
+          if (initialBoardId && boardsData.some(b => b.id === initialBoardId)) {
+            setSelectedBoardId(initialBoardId) 
+          
+            // Get sprints for the board
+            if (selectedProjectId && initialBoardId) {
+              const sprintsData = await getSprintsByBoard(selectedProjectId, initialBoardId)
+              setSprints(sprintsData)
+            
+              // Set active sprint if any
+              const activeSprintData = sprintsData.find(s => s.status === 'Active')
+              const sprintIdParam = searchParams.get("sprintId")
+              
+              if (sprintIdParam && sprintsData.some(s => s.id === sprintIdParam)) {
+                setSelectedSprintId(sprintIdParam)
+                setActiveSprint(sprintsData.find(s => s.id === sprintIdParam) || null)
+              } else if (activeSprintData) {
+                setSelectedSprintId(activeSprintData.id)
+                setActiveSprint(activeSprintData)
+              } else if (sprintsData.length > 0) {
+                setSelectedSprintId(sprintsData[0].id)
+                setActiveSprint(sprintsData[0])
+              } else {
+                setSelectedSprintId(null)
+                setActiveSprint(null)
+              }
+            }
+          } else {
+            setSelectedBoardId(null)
+            setSprints([])
+            setSelectedSprintId(null)
+            setActiveSprint(null)
+          }
         }
 
-        const epicsData = await getEpicsByProject(selectedProjectId!)
-        setEpics(epicsData)
+        // Get epics for the project
+        if (selectedProjectId) {
+          const epicsData = await getEpicsByProject(selectedProjectId)
+          setEpics(epicsData)
+        }
 
-        const storiesData = await getStoriesByProject(selectedProjectId!)
-        setProjectStories(storiesData)
+        // Get stories for the project
+        if (selectedProjectId) {
+          const storiesData = await getStoriesByProject(selectedProjectId)
+          setProjectStories(storiesData)
+        }
 
-        const tasksData = await getTasks({ projectId: selectedProjectId! })
-        setProjectTasks(tasksData)
+        // Get tasks for the project
+        if (selectedProjectId) {
+          const tasksData = await getTasks({ projectId: selectedProjectId })
+          setProjectTasks(tasksData)
+        }
         
       } catch (err) {
         console.error(`Failed to fetch data for project ${selectedProjectId}:`, err)
@@ -137,142 +202,228 @@ export default function TasksPage() {
       }
     }
     fetchProjectData()
-  }, [selectedProjectId])
+  }, [selectedProjectId, searchParams])
 
+  // Load sprints when board changes
   useEffect(() => {
     if (!selectedBoardId || !selectedProjectId) {
       setSprints([])
       setSelectedSprintId(null)
-      return;
+      setActiveSprint(null)
+      return
     }
+    
     async function fetchSprintsForBoard() {
       try {
-        setLoading(true);
-        const sprintsData = await getSprintsByBoard(selectedProjectId!, selectedBoardId!)
-        setSprints(sprintsData)
-        if(sprintsData.length > 0 && !sprints.find(s => s.id === selectedSprintId)) {
-            setSelectedSprintId(sprintsData[0].id);
-        } else if (sprintsData.length === 0) {
-            setSelectedSprintId(null);
+        setLoading(true)
+        
+        // Get sprints for the board
+        if (selectedProjectId && selectedBoardId) {
+          const sprintsData = await getSprintsByBoard(selectedProjectId, selectedBoardId)
+          setSprints(sprintsData)
+        
+          // Set active sprint if any
+          const activeSprintData = sprintsData.find(s => s.status === 'Active')
+          
+          if (activeSprintData) {
+            setSelectedSprintId(activeSprintData.id)
+            setActiveSprint(activeSprintData)
+          } else if (sprintsData.length > 0) {
+            setSelectedSprintId(sprintsData[0].id)
+            setActiveSprint(sprintsData[0])
+          } else {
+            setSelectedSprintId(null)
+            setActiveSprint(null)
+          }
         }
       } catch (err) {
         console.error("Failed to fetch sprints:", err)
         setError("Failed to load sprints for the board.")
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
+    
     fetchSprintsForBoard()
-  }, [selectedBoardId, selectedProjectId]);
+  }, [selectedBoardId, selectedProjectId])
 
+  // Update URL when view or filters change
   const handleViewChange = (newView: string) => {
     setView(newView)
-    router.push(`/tasks?view=${newView}&projectId=${selectedProjectId || ''}&boardId=${selectedBoardId || ''}`, { scroll: false })
+    router.push(
+      `/tasks?view=${newView}${selectedProjectId ? `&projectId=${selectedProjectId}` : ''}${selectedBoardId ? `&boardId=${selectedBoardId}` : ''}${selectedSprintId ? `&sprintId=${selectedSprintId}` : ''}`, 
+      { scroll: false }
+    )
   }
 
+  // Handle item creation
   const handleItemCreated = (item: Task | Story | Epic) => {
-    if (item.hasOwnProperty('epicId') && item.hasOwnProperty('points')) {
-      setProjectStories(prev => [...prev, item as Story]);
-    } else if (item.hasOwnProperty('type') && ['Task', 'Bug', 'Subtask'].includes((item as Task).type)) {
-      setProjectTasks(prev => [...prev, item as Task]);
-    } else if (!item.hasOwnProperty('epicId') && !item.hasOwnProperty('storyId')) {
-        if (item.hasOwnProperty('name')) {
-            setEpics(prev => [...prev, item as Epic]);
-        }
+    setShowCreateItemDialog(false)
+    
+    if ('name' in item && !('title' in item)) {
+      // Epic created
+      setEpics(prev => [item as Epic, ...prev])
+    } else if ('isReady' in item || 'points' in item) {
+      // Story created
+      setProjectStories(prev => [item as Story, ...prev])
+      if (selectedSprintId && (item as Story).sprintId === selectedSprintId) {
+        // If the story was assigned to the current sprint, refresh sprint data
+        refreshProjectData()
+      }
     } else {
-        if (selectedProjectId) {
-            console.warn("Unknown item type created, re-fetching project data for consistency", item);
-             async function fetchProjectData() {
-                setLoading(true);
-                setError(null);
-                try {
-                    const [boardsData, epicsData, storiesData, tasksData] = await Promise.all([
-                        getBoardsByProject(selectedProjectId!),
-                        getEpicsByProject(selectedProjectId!),
-                        getStoriesByProject(selectedProjectId!),
-                        getTasks({ projectId: selectedProjectId! })
-                    ]);
-            
-                    setBoards(boardsData);
-                    if (boardsData.length > 0 && !selectedBoardId) {
-                        const currentBoardId = boardsData[0].id;
-                        setSelectedBoardId(currentBoardId);
-                        const sprintsData = await getSprintsByBoard(selectedProjectId!, currentBoardId);
-                        setSprints(sprintsData);
-                        if(sprintsData.length > 0 && !selectedSprintId) setSelectedSprintId(sprintsData[0].id);
-                    } else if (boardsData.length === 0) {
-                        setSelectedBoardId(null);
-                        setSprints([]);
-                        setSelectedSprintId(null);
-                    }
-                    setEpics(epicsData);
-                    setProjectStories(storiesData);
-                    setProjectTasks(tasksData);
-                } catch (err) {
-                    console.error(`Failed to re-fetch data for project ${selectedProjectId}:`, err);
-                    setError(`Failed to reload data for project after item creation. ${err instanceof Error ? err.message : ''}`);
-                } finally {
-                    setLoading(false);
-                }
-            }
-            fetchProjectData();
-        }
+      // Task created
+      setProjectTasks(prev => [item as Task, ...prev])
+      if (selectedSprintId && (item as Task).sprintId === selectedSprintId) {
+        // If the task was assigned to the current sprint, refresh sprint data
+        refreshProjectData()
+      }
     }
   }
   
+  // Refresh all project data
+  const refreshProjectData = async () => {
+    if (!selectedProjectId) return
+    
+    try {
+      setLoading(true)
+      
+      // Fetch updated epics, stories, and tasks
+      const [epicsData, storiesData, tasksData] = await Promise.all([
+        getEpicsByProject(selectedProjectId),
+        getStoriesByProject(selectedProjectId),
+        getTasks({ projectId: selectedProjectId })
+      ])
+      
+      setEpics(epicsData)
+      setProjectStories(storiesData)
+      setProjectTasks(tasksData)
+      
+      // If a sprint is selected, refresh sprint data
+      if (selectedSprintId && selectedBoardId) {
+        const sprintsData = await getSprintsByBoard(selectedProjectId, selectedBoardId)
+        setSprints(sprintsData)
+        
+        const currentSprint = sprintsData.find(s => s.id === selectedSprintId)
+        if (currentSprint) {
+          setActiveSprint(currentSprint)
+        }
+      }
+      
+    } catch (error) {
+      console.error("Failed to refresh project data:", error)
+      setError("Failed to refresh project data. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  // Handle project change
   const handleProjectChange = (projectId: string) => {
-    setSelectedProjectId(projectId);
-    setSelectedBoardId(null);
-    setSelectedSprintId(null);
-    router.push(`/tasks?view=${view}&projectId=${projectId}`, { scroll: false });
-  };
+    setSelectedProjectId(projectId)
+    setSelectedBoardId(null)
+    setSelectedSprintId(null)
+    setActiveSprint(null)
+    router.push(`/tasks?view=${view}&projectId=${projectId}`, { scroll: false })
+  }
 
+  // Handle board change
   const handleBoardChange = (boardId: string) => {
-    setSelectedBoardId(boardId);
-    setSelectedSprintId(null);
-    router.push(`/tasks?view=${view}&projectId=${selectedProjectId}&boardId=${boardId}`, { scroll: false });
-  };
+    setSelectedBoardId(boardId)
+    setSelectedSprintId(null)
+    setActiveSprint(null)
+    router.push(
+      `/tasks?view=${view}${selectedProjectId ? `&projectId=${selectedProjectId}` : ''}&boardId=${boardId}`, 
+      { scroll: false }
+    )
+  }
 
+  // Handle sprint change
   const handleSprintChange = (sprintId: string) => {
-    setSelectedSprintId(sprintId);
-  };
+    setSelectedSprintId(sprintId)
+    setActiveSprint(sprints.find(s => s.id === sprintId) || null)
+    router.push(
+      `/tasks?view=${view}${selectedProjectId ? `&projectId=${selectedProjectId}` : ''}${selectedBoardId ? `&boardId=${selectedBoardId}` : ''}&sprintId=${sprintId}`, 
+      { scroll: false }
+    )
+  }
 
-  const handleOpenCreateItemDialog = (type: CreatableItemType, defaults: { epicId?: string, projectId?: string, storyId?: string }) => {
-    setCreateItemType(type);
-    setCreateItemDefaults(defaults);
-    setShowCreateItemDialog(true);
-  };
+  // Handle opening the create item dialog
+  const handleOpenCreateItemDialog = (type: CreatableItemType, defaults: { 
+    epicId?: string, 
+    projectId?: string, 
+    storyId?: string,
+    sprintId?: string
+  }) => {
+    setCreateItemType(type)
+    setCreateItemDefaults(defaults)
+    setShowCreateItemDialog(true)
+  }
 
+  // Handle assigning a story to a sprint
   const handleAssignStoryToSprint = async (storyId: string, sprintIdValue: string) => {
-    if (!selectedProjectId) return;
-    setLoading(true);
+    if (!selectedProjectId) return
+    
+    setLoading(true)
     try {
-      await assignStoryToSprint(storyId, sprintIdValue);
-      const updatedStories = await getStoriesByProject(selectedProjectId);
-      setProjectStories(updatedStories);
+      await assignStoryToSprint(storyId, sprintIdValue)
+      
+      // Update stories data after assignment
+      const updatedStories = await getStoriesByProject(selectedProjectId)
+      setProjectStories(updatedStories)
     } catch (err) {
-      console.error("Failed to assign story to sprint:", err);
-      setError("Failed to assign story. " + (err instanceof Error ? err.message : ''));
+      console.error("Failed to assign story to sprint:", err)
+      setError("Failed to assign story. " + (err instanceof Error ? err.message : ''))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
+  // Handle updating a story's status
   const handleUpdateStoryStatus = async (storyId: string, status: Story['status']) => {
-    if (!selectedProjectId) return;
-    setLoading(true);
+    if (!selectedProjectId) return
+    
+    setLoading(true)
     try {
-      await updateStory(selectedProjectId, storyId, { status });
-      const updatedStories = await getStoriesByProject(selectedProjectId);
-      setProjectStories(updatedStories);
+      await updateStory(selectedProjectId, storyId, { status })
+      
+      // Update stories data after status change
+      const updatedStories = await getStoriesByProject(selectedProjectId)
+      setProjectStories(updatedStories)
     } catch (err) {
-      console.error("Failed to update story status:", err);
-      setError("Failed to update story status. " + (err instanceof Error ? err.message : ''));
+      console.error("Failed to update story status:", err)
+      setError("Failed to update story status. " + (err instanceof Error ? err.message : ''))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
+  // Handle deleting an item
+  const handleDeleteItem = async (itemType: 'Epic' | 'Story' | 'Task', itemId: string) => {
+    try {
+      setLoading(true)
+      
+      if (itemType === 'Epic' && selectedProjectId) {
+            await deleteEpic(selectedProjectId, itemId)
+            setEpics(prev => prev.filter(epic => epic.id !== itemId))
+      } else if (itemType === 'Story' && selectedProjectId) {
+          await deleteStory(selectedProjectId, itemId)
+          setProjectStories(prev => prev.filter(story => story.id !== itemId))
+      } else if (itemType === 'Task') {
+          await deleteTask(itemId)
+          setProjectTasks(prev => prev.filter(task => task.id !== itemId))
+      }
+      
+      // Refresh data after deletion to ensure consistency
+      await refreshProjectData()
+    } catch (error) {
+      console.error(`Failed to delete ${itemType.toLowerCase()}:`, error)
+      setError(`Failed to delete ${itemType.toLowerCase()}. ${error instanceof Error ? error.message : ''}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Loading state
   if (loading && !projects.length) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -281,6 +432,7 @@ export default function TasksPage() {
     )
   }
 
+  // Error state
   if (error && !projects.length) {
     return (
       <div className="flex flex-col items-center justify-center h-screen p-6">
@@ -291,8 +443,14 @@ export default function TasksPage() {
     )
   }
 
+  // Filter stories for the active sprint
+  const sprintStories = selectedSprintId
+    ? projectStories.filter(story => story.sprintId === selectedSprintId)
+    : []
+
   return (
     <div className="flex flex-col p-6 space-y-6 min-h-screen">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Tasks</h1>
@@ -304,32 +462,33 @@ export default function TasksPage() {
         </Button>
       </div>
 
+      {/* Project/Board/Sprint Selectors */}
       <div className="flex flex-col sm:flex-row gap-4 items-stretch">
         <div className="flex-1 min-w-[200px]">
-            <Label htmlFor="project-select">Project</Label>
-            <Select value={selectedProjectId || ""} onValueChange={handleProjectChange} disabled={!projects.length}>
-                <SelectTrigger id="project-select">
-                    <SelectValue placeholder={projects.length ? "Select a project" : "No projects available"} />
-                </SelectTrigger>
-                <SelectContent>
-                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-            </Select>
+          <Label htmlFor="project-select">Project</Label>
+          <Select value={selectedProjectId || ""} onValueChange={handleProjectChange} disabled={!projects.length}>
+            <SelectTrigger id="project-select">
+              <SelectValue placeholder={projects.length ? "Select a project" : "No projects available"} />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex-1 min-w-[200px]">
-            <Label htmlFor="board-select">Board</Label>
-            <Select value={selectedBoardId || ""} onValueChange={handleBoardChange} disabled={!selectedProjectId || !boards.length}>
-                <SelectTrigger id="board-select">
-                    <SelectValue placeholder={boards.length ? "Select a board" : (selectedProjectId ? "No boards in project" : "Select project first")} />
-                </SelectTrigger>
-                <SelectContent>
-                    {boards.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                </SelectContent>
-            </Select>
+          <Label htmlFor="board-select">Board</Label>
+          <Select value={selectedBoardId || ""} onValueChange={handleBoardChange} disabled={!selectedProjectId || !boards.length}>
+            <SelectTrigger id="board-select">
+              <SelectValue placeholder={boards.length ? "Select a board" : (selectedProjectId ? "No boards in project" : "Select project first")} />
+            </SelectTrigger>
+            <SelectContent>
+              {boards.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
-         {view === 'board' && selectedBoardId && sprints.length > 0 && (
+        {(view === 'board' || view === 'backlog') && selectedBoardId && sprints.length > 0 && (
           <div className="flex-1 min-w-[200px]">
-            <Label htmlFor="sprint-select">Sprint (for Board View)</Label>
+            <Label htmlFor="sprint-select">Sprint</Label>
             <Select value={selectedSprintId || ""} onValueChange={handleSprintChange} disabled={!sprints.length}>
               <SelectTrigger id="sprint-select">
                 <SelectValue placeholder={sprints.length ? "Select a sprint" : "No sprints on board"} />
@@ -342,6 +501,15 @@ export default function TasksPage() {
         )}
       </div>
 
+      {/* Sprint Header (Only shown in Board view) */}
+      {view === 'board' && selectedSprintId && (
+        <SprintHeader 
+          sprint={activeSprint} 
+          stories={sprintStories}
+        />
+      )}
+
+      {/* Tabs and Views */}
       <Tabs value={view} onValueChange={handleViewChange} className="w-full">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="relative flex-1">
@@ -381,34 +549,37 @@ export default function TasksPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : error && selectedProjectId ? (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                <p className="font-bold">Error loading project data:</p>
-                <p>{error}</p>
-            </div>
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            <p className="font-bold">Error loading project data:</p>
+            <p>{error}</p>
+          </div>
         ) : !selectedProjectId ? (
-             <div className="text-center py-10">
-                <p className="text-lg text-muted-foreground">Please select a project to view tasks.</p>
-            </div>
+          <div className="text-center py-10">
+            <p className="text-lg text-muted-foreground">Please select a project to view tasks.</p>
+          </div>
         ) : (
           <>
-        <TabsContent value="board" className="mt-0">
+            {/* Board View */}
+            <TabsContent value="board" className="mt-0">
               {selectedBoardId && selectedSprintId ? (
-                <KanbanBoard 
-                  projectId={selectedProjectId!} 
-                  boardId={selectedBoardId!}
-                  sprintId={selectedSprintId!}
+                <BoardView 
+                  projectId={selectedProjectId} 
+                  boardId={selectedBoardId}
+                  sprintId={selectedSprintId}
+                  onOpenCreateItemDialog={handleOpenCreateItemDialog}
                 />
               ) : (
                 <div className="text-center py-10">
                   <p className="text-lg text-muted-foreground">Please select a board and a sprint to view the Kanban board.</p>
                 </div>
               )}
-        </TabsContent>
+            </TabsContent>
 
-        <TabsContent value="backlog" className="mt-0">
+            {/* Backlog View */}
+            <TabsContent value="backlog" className="mt-0">
               {selectedProjectId ? (
-                <TaskBacklog 
-                  projectId={selectedProjectId!} 
+                <BacklogView 
+                  projectId={selectedProjectId} 
                   epics={epics} 
                   stories={projectStories.filter(s => !s.sprintId || s.status === 'Backlog')}
                   sprints={sprints} 
@@ -419,29 +590,47 @@ export default function TasksPage() {
                   onOpenCreateItemDialog={handleOpenCreateItemDialog}
                 />
               ) : (
-                 <div className="text-center py-10"><p className="text-lg text-muted-foreground">Select a project to see its backlog.</p></div>
+                <div className="text-center py-10">
+                  <p className="text-lg text-muted-foreground">Select a project to see its backlog.</p>
+                </div>
               )}
-        </TabsContent>
+            </TabsContent>
 
-        <TabsContent value="list" className="mt-0">
+            {/* List View */}
+            <TabsContent value="list" className="mt-0">
               {selectedProjectId ? (
-                <TaskList 
-                  projectId={selectedProjectId!} 
-                  items={[...epics, ...projectStories, ...projectTasks]}
+                <ListView 
+                  projectId={selectedProjectId || ""} 
+                  items={[...epics, ...projectStories, ...projectTasks].filter(item => {
+                    if (searchTerm) {
+                      const itemTitle = 'title' in item ? item.title : ('name' in item ? item.name : '')
+                      const itemDesc = 'description' in item ? item.description : ''
+                      return (
+                        itemTitle.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                        itemDesc?.toLowerCase().includes(searchTerm.toLowerCase())
+                      )
+                    }
+                    return true
+                  })}
+                  users={allUsers}
+                  onOpenCreateItemDialog={handleOpenCreateItemDialog}
+                  onDeleteItem={handleDeleteItem}
                 />
               ) : (
-                 <div className="text-center py-10"><p className="text-lg text-muted-foreground">Select a project to see its items list.</p></div>
+                <div className="text-center py-10">
+                  <p className="text-lg text-muted-foreground">Select a project to see its items list.</p>
+                </div>
               )}
-        </TabsContent>
+            </TabsContent>
           </>
         )}
       </Tabs>
 
+      {/* Create Item Dialog */}
       <CreateItemDialog 
         open={showCreateItemDialog} 
         onOpenChange={setShowCreateItemDialog} 
         onItemCreated={handleItemCreated}
-        
         projectId={selectedProjectId}
         sprintId={selectedSprintId}
         projects={projects}
