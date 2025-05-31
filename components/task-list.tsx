@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState } from "react";
-import { CreatableItemType, EpicSimple, StorySimple, TaskSimple, UserSimple } from "./create-item-dialog";
+import { useState } from "react";
+import { Epic, Story, Task, User } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,19 +25,21 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator 
 } from "@/components/ui/dropdown-menu";
+import { CreatableItemType } from "./create-item-dialog";
+import React from "react"; // Import React for React.ReactNode
 
 interface TaskListProps {
   projectId: string;
-  epics: EpicSimple[];
-  stories: StorySimple[];
-  tasks: TaskSimple[];
-  users: UserSimple[];
+  epics: Epic[];
+  stories: Story[];
+  tasks: Task[];
+  users: User[];
   searchTerm: string;
   onOpenCreateItemDialog: (type: CreatableItemType, defaults: { projectId?: string, epicId?: string, storyId?: string }) => void;
 }
 
 // Helper for priority display
-const getPriorityDisplay = (priority: StorySimple['priority'] | TaskSimple['priority']) => {
+const getPriorityDisplay = (priority: Story['priority'] | Task['priority']) => {
   const colors: Record<string, string> = {
     Highest: "bg-red-600", High: "bg-orange-500", Medium: "bg-yellow-500", Low: "bg-green-500", Lowest: "bg-blue-400",
   };
@@ -158,7 +160,7 @@ export function TaskList({
           {item.description && <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{item.description}</p>}
           
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-            <span>Status: <Badge variant={item.status === 'Done' || item.status === 'Closed' ? "secondary" : "outline"} className="text-xs px-1.5 py-0.5">{item.status}</Badge></span>
+            <span>Status: <Badge variant={item.status === 'Done' || item.status === 'Closed' ? "success" : "secondary"} className="text-xs px-1.5 py-0.5">{item.status}</Badge></span>
             {item.itemType === 'Story' && item.points != null && (
               <Badge variant="outline" className="text-xs px-1.5 py-0.5">
                 {item.points} SP

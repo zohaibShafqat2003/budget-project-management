@@ -1,7 +1,6 @@
 import jwt from "jsonwebtoken"
 import bcrypt from "bcryptjs"
 import type { NextRequest } from "next/server"
-import { JWT_EXPIRES_DAYS, JWT_REFRESH_EXPIRES_DAYS } from './api/core';
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 // API URL from environment variable or fallback to localhost
@@ -82,14 +81,6 @@ export async function login(email: string, password: string): Promise<AuthRespon
       localStorage.setItem('refreshToken', demoAuthResponse.refreshToken);
       localStorage.setItem('user', JSON.stringify(demoAuthResponse.user));
       
-      // Store token timestamp for expiration checks
-      localStorage.setItem('authTokenTimestamp', Date.now().toString());
-      
-      // Set refresh token expiry
-      const refreshExpiry = new Date();
-      refreshExpiry.setDate(refreshExpiry.getDate() + JWT_REFRESH_EXPIRES_DAYS);
-      localStorage.setItem('refreshTokenExpiry', refreshExpiry.toISOString());
-      
       return demoAuthResponse;
     }
     
@@ -115,14 +106,6 @@ export async function login(email: string, password: string): Promise<AuthRespon
       localStorage.setItem('authToken', authData.accessToken || authData.token);
       localStorage.setItem('refreshToken', authData.refreshToken || '');
       localStorage.setItem('user', JSON.stringify(authData.user));
-      
-      // Store token timestamp for expiration checks
-      localStorage.setItem('authTokenTimestamp', Date.now().toString());
-      
-      // Set refresh token expiry
-      const refreshExpiry = new Date();
-      refreshExpiry.setDate(refreshExpiry.getDate() + JWT_REFRESH_EXPIRES_DAYS);
-      localStorage.setItem('refreshTokenExpiry', refreshExpiry.toISOString());
       
       return {
         user: authData.user,
@@ -215,13 +198,14 @@ export async function logout(): Promise<void> {
       }
     }
     
-    // Clear local storage regardless of server response
+    // Always clear local storage regardless of server response
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    
   } catch (error) {
     console.error('Logout error:', error);
-    // Still clear tokens on error
+    // Still clear local storage even if there's an error
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
@@ -229,16 +213,12 @@ export async function logout(): Promise<void> {
   }
 }
 
-// Centralized token refresh function used by API modules
 export async function refreshAccessToken(): Promise<{ accessToken: string; refreshToken?: string }> {
   try {
     const refreshToken = localStorage.getItem('refreshToken');
     
     if (!refreshToken) {
-      // Clear all auth tokens when refresh token is missing
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
-      throw new Error('No refresh token available');
+      throw new Error('No refresh token found');
     }
     
     const response = await fetch(`${API_URL}/auth/refresh-token`, {
@@ -248,77 +228,39 @@ export async function refreshAccessToken(): Promise<{ accessToken: string; refre
       },
       body: JSON.stringify({ refreshToken }),
     });
-    
+
     if (!response.ok) {
-      // If we get a 401 here, it means the refresh token is invalid/expired
-      if (response.status === 401) {
-        // Clear all auth data
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-        throw new Error('Session expired. Please log in again.');
-      }
-      
-      // Check if response is JSON before trying to parse it
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Token refresh failed');
-      } else {
-        // Handle non-JSON responses
-        throw new Error(`Token refresh failed with status ${response.status}`);
-      }
+      throw new Error('Failed to refresh token');
     }
-    
-    // Check if response is JSON before trying to parse it
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('Received non-JSON response from server during token refresh');
-    }
-    
+
     const data = await response.json();
     
-    // Backend wraps success responses in a data field inside success field
-    if (!data.success) {
+    if (data.success) {
+      // Adjust based on your API response structure
+      const authData = data.data || data;
+      const newAccessToken = authData.accessToken || authData.token;
+      const newRefreshToken = authData.refreshToken || refreshToken;
+      
+      // Update stored tokens
+      localStorage.setItem('authToken', newAccessToken);
+      if (newRefreshToken) {
+        localStorage.setItem('refreshToken', newRefreshToken);
+      }
+      
+      return { 
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken
+      };
+    } else {
       throw new Error(data.message || 'Invalid response format from server');
     }
-    
-    // Extract data field from response format
-    const responseData = data.data || {};
-    
-    // Validate the token in the response
-    const newAccessToken = responseData.accessToken;
-    const newRefreshToken = responseData.refreshToken;
-    
-    if (!newAccessToken) {
-      throw new Error('Invalid response: No access token received');
-    }
-    
-    // Update tokens in localStorage
-    localStorage.setItem('authToken', newAccessToken);
-    
-    if (newRefreshToken) {
-      localStorage.setItem('refreshToken', newRefreshToken);
-      
-      // Set expiration date for refresh token
-      const refreshExpiry = new Date();
-      refreshExpiry.setDate(refreshExpiry.getDate() + JWT_REFRESH_EXPIRES_DAYS);
-      localStorage.setItem('refreshTokenExpiry', refreshExpiry.toISOString());
-    }
-    
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken
-    };
   } catch (error) {
     console.error('Token refresh error:', error);
-    
-    // Ensure error is propagated
-    if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error('Unknown error during token refresh');
-    }
+    // Clear authentication if refresh fails
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    throw error;
   }
 }
 
@@ -328,12 +270,10 @@ export function getCurrentUser(): User | null {
   }
   
   const userJson = localStorage.getItem('user');
-  if (!userJson) {
-    return null;
-  }
+  if (!userJson) return null;
   
   try {
-    return JSON.parse(userJson);
+    return JSON.parse(userJson) as User;
   } catch (error) {
     console.error('Error parsing user data:', error);
     return null;
@@ -347,62 +287,4 @@ export function isAuthenticated(): boolean {
   
   const token = localStorage.getItem('authToken');
   return !!token;
-}
-
-/**
- * Checks if the access token is likely expired based on JWT_EXPIRES_DAYS
- * This is just a client-side check - the server will do the real validation
- */
-export function isAccessTokenExpired(): boolean {
-  // If there's no token, it's effectively expired
-  if (!isAuthenticated()) {
-    return true;
-  }
-
-  const tokenTimestamp = localStorage.getItem('authTokenTimestamp');
-  if (!tokenTimestamp) {
-    return true; // No timestamp, assume expired
-  }
-
-  const tokenDate = new Date(parseInt(tokenTimestamp, 10));
-  const now = new Date();
-  
-  // Calculate token expiry (adding JWT_EXPIRES_DAYS to when it was issued)
-  const expiryDate = new Date(tokenDate);
-  expiryDate.setDate(expiryDate.getDate() + JWT_EXPIRES_DAYS);
-  
-  // Token is expired if current time is past expiry
-  return now > expiryDate;
-}
-
-/**
- * Checks if the refresh token is likely expired based on JWT_REFRESH_EXPIRES_DAYS
- */
-export function isRefreshTokenExpired(): boolean {
-  const refreshToken = localStorage.getItem('refreshToken');
-  if (!refreshToken) {
-    return true;
-  }
-
-  const refreshExpiry = localStorage.getItem('refreshTokenExpiry');
-  if (!refreshExpiry) {
-    // If we don't have an expiry timestamp, use creation time
-    const tokenTimestamp = localStorage.getItem('authTokenTimestamp');
-    if (!tokenTimestamp) {
-      return true; // No timestamp, assume expired
-    }
-
-    const tokenDate = new Date(parseInt(tokenTimestamp, 10));
-    const now = new Date();
-    
-    // Calculate refresh token expiry (adding JWT_REFRESH_EXPIRES_DAYS to when it was issued)
-    const expiryDate = new Date(tokenDate);
-    expiryDate.setDate(expiryDate.getDate() + JWT_REFRESH_EXPIRES_DAYS);
-    
-    // Token is expired if current time is past expiry
-    return now > expiryDate;
-  }
-
-  // If we have a stored expiry date, use it
-  return new Date() > new Date(refreshExpiry);
 }

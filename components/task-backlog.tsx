@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -29,38 +29,27 @@ import {
   DropdownMenuPortal
 } from "@/components/ui/dropdown-menu"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { CreatableItemType, EpicSimple, StorySimple, TaskSimple, UserSimple } from "./create-item-dialog" 
-
-interface Sprint {
-  id: string;
-  name: string;
-  goal: string;
-  boardId: string;
-  projectId: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-}
+import { Epic, Story, Sprint, User, Task } from "@/lib/db" // Task might be needed for priority/type definitions if shared
+import { CreatableItemType } from "./create-item-dialog" // Get item type definition
 
 interface TaskBacklogProps {
   projectId: string;
-  epics: EpicSimple[];
-  stories: StorySimple[]; // These are pre-filtered backlog stories by TasksPage
+  epics: Epic[];
+  stories: Story[]; // These are pre-filtered backlog stories by TasksPage
   sprints: Sprint[];
   selectedSprintId: string | null;
-  users: UserSimple[];
-  searchTerm?: string; // Make it optional to not break existing uses
+  users: User[];
   onAssignStoryToSprint: (storyId: string, sprintId: string) => Promise<void>;
-  onUpdateStoryStatus: (storyId: string, status: StorySimple['status']) => Promise<void>;
+  onUpdateStoryStatus: (storyId: string, status: Story['status']) => Promise<void>;
   onOpenCreateItemDialog: (type: CreatableItemType, defaults: { epicId?: string, projectId?: string, storyId?: string }) => void;
 }
 
 // Helper for priority display (similar to KanbanBoard, consider moving to utils)
-const getPriorityDisplay = (priority: StorySimple['priority'] | TaskSimple['priority']) => {
+const getPriorityDisplay = (priority: Story['priority'] | Task['priority']) => {
   const colors: Record<string, string> = {
     Highest: "bg-red-600", High: "bg-orange-500", Medium: "bg-yellow-500", Low: "bg-green-500", Lowest: "bg-blue-400",
   };
-  const icons: Record<string, React.ReactNode> = {
+  const icons: Record<string, JSX.Element> = {
     Highest: <ArrowUp className="h-3 w-3" />, High: <ArrowUp className="h-3 w-3" />,
     Medium: <ArrowRight className="h-3 w-3" />, Low: <ArrowDown className="h-3 w-3" />,
     Lowest: <ArrowDown className="h-3 w-3" />,
@@ -88,7 +77,6 @@ export function TaskBacklog({
   sprints,
   selectedSprintId,
   users,
-  searchTerm,
   onAssignStoryToSprint,
   onUpdateStoryStatus,
   onOpenCreateItemDialog
@@ -99,17 +87,17 @@ export function TaskBacklog({
   const storiesWithoutEpic = stories.filter(story => !story.epicId);
   const activeSprints = sprints.filter(s => s.status === 'Active' || s.status === 'Planning');
 
-  const sortStories = (storiesToSort: StorySimple[], sortKey: "priority" | "id") => {
+  const sortStories = (storiesToSort: Story[], sortKey: "priority" | "id") => {
     return [...storiesToSort].sort((a, b) => {
       if (sortKey === "priority") {
-        const priorityOrder: Record<StorySimple['priority'], number> = { "Highest": 0, "High": 1, "Medium": 2, "Low": 3, "Lowest": 4 };
+        const priorityOrder: Record<Story['priority'], number> = { "Highest": 0, "High": 1, "Medium": 2, "Low": 3, "Lowest": 4 };
         return (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99);
       }
       return a.id.localeCompare(b.id); // Default sort by ID or title
     });
   };
 
-  const renderStoryCard = (story: StorySimple) => {
+  const renderStoryCard = (story: Story) => {
     const priorityInfo = getPriorityDisplay(story.priority);
     const assignee = story.assigneeId ? users.find(u => u.id === story.assigneeId) : null;
 
@@ -211,7 +199,7 @@ export function TaskBacklog({
                     <div className="flex items-center">
                         {getItemTypeIcon('Epic')}
                         <span className="font-medium text-base mr-2">{epic.name}</span>
-                        <Badge variant={epic.status === 'Done' ? "secondary" : "outline"}>{epic.status}</Badge>
+                        <Badge variant={epic.status === 'Done' ? "success" : "secondary"}>{epic.status}</Badge>
                   </div>
                     <span className="text-sm text-muted-foreground mr-4">{storiesInEpic.length} storie{storiesInEpic.length !== 1 ? 's' : ''}</span>
                 </div>

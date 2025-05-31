@@ -1,50 +1,101 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { getAuthUser } from "@/lib/auth"
-import { db } from "@/lib/db"
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
-export async function GET(request: NextRequest) {
+const BACKEND = process.env.BACKEND_URL || 'http://localhost:5000/api';
+
+export async function GET(request: Request) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+    const limit = searchParams.get('limit');
+
+    const queryParams = new URLSearchParams();
+    if (status) queryParams.append('status', status);
+    if (limit) queryParams.append('limit', limit);
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+    const cookieStore = await cookies();
+    const token = cookieStore.get('authToken');
+
+    if (!token) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const projects = await db.getProjectsByUserId(authUser.userId)
-    return NextResponse.json({ projects })
+    const res = await fetch(`${BACKEND}/projects${query}`, {
+      headers: {
+        'Authorization': `Bearer ${token.value}`,
+      },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { message: data.message || 'Failed to fetch projects' },
+        { status: res.status }
+      );
+    }
+
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("Get projects error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error('Projects fetch error:', error);
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const authUser = await getAuthUser(request)
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const payload = await request.json();
+    
+    // Validate required fields
+    if (!payload.name || !payload.clientId || !payload.type || !payload.status) {
+      return NextResponse.json(
+        { message: 'Missing required fields' },
+        { status: 400 }
+      );
     }
 
-    const { name, description, budget, startDate, endDate } = await request.json()
+    const cookieStore = await cookies();
+    const token = cookieStore.get('authToken');
 
-    if (!name || !description || !budget) {
-      return NextResponse.json({ error: "Name, description, and budget are required" }, { status: 400 })
+    if (!token) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const project = await db.createProject({
-      name,
-      description,
-      budget: Number.parseFloat(budget),
-      spent: 0,
-      status: "planning",
-      startDate: new Date(startDate),
-      endDate: endDate ? new Date(endDate) : undefined,
-      ownerId: authUser.userId,
-      teamMembers: [authUser.userId],
-    })
+    const res = await fetch(`${BACKEND}/projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token.value}`,
+      },
+      body: JSON.stringify(payload),
+    });
 
-    return NextResponse.json({ project }, { status: 201 })
+    const data = await res.json();
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { message: data.message || 'Failed to create project' },
+        { status: res.status }
+      );
+    }
+
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("Create project error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error('Project creation error:', error);
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

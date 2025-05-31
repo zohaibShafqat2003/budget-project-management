@@ -1,93 +1,137 @@
 import { NextResponse } from 'next/server';
-import { serverFetch, isServerAuthenticated } from '@/lib/server-api';
+import { cookies } from 'next/headers';
 
-interface Params {
-  params: {
-    storyId: string;
-  };
-}
+const BACKEND = process.env.BACKEND_URL || 'http://localhost:5000/api';
 
-export async function GET(request: Request, { params }: Params) {
+export async function GET(
+  request: Request,
+  { params }: { params: { storyId: string } }
+) {
   try {
-    // Check if user is authenticated
-    if (!isServerAuthenticated()) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'Unauthorized',
-        data: null
-      }, { status: 401 });
+    const cookieStore = await cookies();
+    const token = cookieStore.get('authToken');
+
+    if (!token) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const { storyId } = params;
+    const res = await fetch(`${BACKEND}/stories/${params.storyId}`, {
+      headers: {
+        'Authorization': `Bearer ${token.value}`,
+      },
+    });
 
-    // Call our backend API using the serverFetch utility
-    const data = await serverFetch(`/stories/${storyId}`);
-    
+    const data = await res.json();
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { message: data.message || 'Failed to fetch story' },
+        { status: res.status }
+      );
+    }
+
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching story:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: 'Failed to fetch story',
-      data: null
-    }, { status: 500 });
+    console.error('Story fetch error:', error);
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 
-export async function PUT(request: Request, { params }: Params) {
+export async function PUT(
+  request: Request,
+  { params }: { params: { storyId: string } }
+) {
   try {
-    // Check if user is authenticated
-    if (!isServerAuthenticated()) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'Unauthorized',
-        data: null
-      }, { status: 401 });
+    const payload = await request.json();
+    
+    // Validate required fields
+    if (!payload.title && !payload.description && !payload.status) {
+      return NextResponse.json(
+        { message: 'No valid fields to update' },
+        { status: 400 }
+      );
     }
 
-    const { storyId } = params;
-    const storyData = await request.json();
+    const cookieStore = await cookies();
+    const token = cookieStore.get('authToken');
 
-    // Call our backend API using the serverFetch utility
-    const data = await serverFetch(`/stories/${storyId}`, {
+    if (!token) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const res = await fetch(`${BACKEND}/stories/${params.storyId}`, {
       method: 'PUT',
-      body: JSON.stringify(storyData)
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token.value}`,
+      },
+      body: JSON.stringify(payload),
     });
-    
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { message: data.message || 'Failed to update story' },
+        { status: res.status }
+      );
+    }
+
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error updating story:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: 'Failed to update story',
-      data: null
-    }, { status: 500 });
+    console.error('Story update error:', error);
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 
-export async function DELETE(request: Request, { params }: Params) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: { storyId: string } }
+) {
   try {
-    // Check if user is authenticated
-    if (!isServerAuthenticated()) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'Unauthorized'
-      }, { status: 401 });
+    const cookieStore = await cookies();
+    const token = cookieStore.get('authToken');
+
+    if (!token) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const { storyId } = params;
-
-    // Call our backend API using the serverFetch utility
-    const data = await serverFetch(`/stories/${storyId}`, {
-      method: 'DELETE'
+    const res = await fetch(`${BACKEND}/stories/${params.storyId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token.value}`,
+      },
     });
-    
-    return NextResponse.json(data);
+
+    if (!res.ok) {
+      const data = await res.json();
+      return NextResponse.json(
+        { message: data.message || 'Failed to delete story' },
+        { status: res.status }
+      );
+    }
+
+    return NextResponse.json({ message: 'Story deleted successfully' });
   } catch (error) {
-    console.error('Error deleting story:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: 'Failed to delete story'
-    }, { status: 500 });
+    console.error('Story deletion error:', error);
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
   }
 } 

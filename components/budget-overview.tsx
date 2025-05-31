@@ -67,52 +67,52 @@ export function BudgetOverview() {
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent"></div>
           </div>
         ) : (
-          <div className="space-y-6">
+        <div className="space-y-6">
             {budgetData.length > 0 ? (
               budgetData.map((budget) => {
                 const percentSpent = budget.allocated > 0 
                   ? Math.round((budget.spent / budget.allocated) * 100)
                   : 0
-                const isAtRisk = budget.status === "At Risk"
+            const isAtRisk = budget.status === "At Risk"
 
-                return (
-                  <div key={budget.id} className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <div className="font-medium">{budget.project}</div>
-                      {isAtRisk && (
-                        <div className="flex items-center text-red-500 text-sm">
-                          <AlertCircle className="h-4 w-4 mr-1" />
-                          Budget at risk
-                        </div>
-                      )}
+            return (
+              <div key={budget.id} className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <div className="font-medium">{budget.project}</div>
+                  {isAtRisk && (
+                    <div className="flex items-center text-red-500 text-sm">
+                      <AlertCircle className="h-4 w-4 mr-1" />
+                      Budget at risk
                     </div>
+                  )}
+                </div>
 
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Budget Utilization</span>
-                        <span>{percentSpent}%</span>
-                      </div>
-                      <Progress value={percentSpent} className={`h-2 ${isAtRisk ? "bg-red-200" : ""}`} />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-sm">
-                      <div className="flex flex-col">
-                        <span className="text-muted-foreground">Allocated</span>
-                        <span className="font-medium">${budget.allocated.toLocaleString()}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-muted-foreground">Spent</span>
-                        <span className="font-medium">${budget.spent.toLocaleString()}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-muted-foreground">Remaining</span>
-                        <span className={`font-medium ${isAtRisk ? "text-red-500" : ""}`}>
-                          ${budget.remaining.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Budget Utilization</span>
+                    <span>{percentSpent}%</span>
                   </div>
-                )
+                  <Progress value={percentSpent} className={`h-2 ${isAtRisk ? "bg-red-200" : ""}`} />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground">Allocated</span>
+                    <span className="font-medium">${budget.allocated.toLocaleString()}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground">Spent</span>
+                    <span className="font-medium">${budget.spent.toLocaleString()}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground">Remaining</span>
+                    <span className={`font-medium ${isAtRisk ? "text-red-500" : ""}`}>
+                      ${budget.remaining.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
               })
             ) : (
               <div className="text-center p-8 border rounded-lg">
@@ -123,14 +123,14 @@ export function BudgetOverview() {
                 </Button>
               </div>
             )}
-          </div>
+        </div>
         )}
         {budgetData.length > 0 && (
-          <div className="mt-6">
-            <Button variant="outline" asChild>
-              <Link href="/budget">View Full Budget Report</Link>
-            </Button>
-          </div>
+        <div className="mt-6">
+          <Button variant="outline" asChild>
+            <Link href="/budget">View Full Budget Report</Link>
+          </Button>
+        </div>
         )}
       </CardContent>
     </Card>

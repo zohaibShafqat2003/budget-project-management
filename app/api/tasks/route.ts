@@ -1,78 +1,103 @@
 import { NextResponse } from 'next/server';
-import { serverFetch, isServerAuthenticated } from '@/lib/server-api';
+import { cookies } from 'next/headers';
+
+const BACKEND = process.env.BACKEND_URL || 'http://localhost:5000/api';
 
 export async function GET(request: Request) {
   try {
-    // Check if user is authenticated
-    if (!isServerAuthenticated()) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'Unauthorized',
-        data: [] 
-      }, { status: 401 });
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+    const assignee = searchParams.get('assignee');
+    const sprintId = searchParams.get('sprintId');
+
+    const queryParams = new URLSearchParams();
+    if (status) queryParams.append('status', status);
+    if (assignee) queryParams.append('assignee', assignee);
+    if (sprintId) queryParams.append('sprintId', sprintId);
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+
+    const cookieStore = await cookies();
+    const token = cookieStore.get('authToken');
+
+    if (!token) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    // Get query parameters from URL
-    const url = new URL(request.url);
-    const projectId = url.searchParams.get('projectId');
-    const status = url.searchParams.get('status');
-    const priority = url.searchParams.get('priority');
-    const assigneeId = url.searchParams.get('assigneeId');
-    const type = url.searchParams.get('type');
-    const searchTerm = url.searchParams.get('searchTerm');
+    const res = await fetch(`${BACKEND}/tasks${query}`, {
+      headers: {
+        'Authorization': `Bearer ${token.value}`,
+      },
+    });
 
-    // Build query string
-    const queryParams = new URLSearchParams();
-    if (projectId) queryParams.append('projectId', projectId);
-    if (status) queryParams.append('status', status);
-    if (priority) queryParams.append('priority', priority);
-    if (assigneeId) queryParams.append('assigneeId', assigneeId);
-    if (type) queryParams.append('type', type);
-    if (searchTerm) queryParams.append('searchTerm', searchTerm);
-    
-    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    const data = await res.json();
 
-    // Call our backend API using the serverFetch utility
-    const data = await serverFetch(`/tasks${queryString}`);
-    
+    if (!res.ok) {
+      return NextResponse.json(
+        { message: data.message || 'Failed to fetch tasks' },
+        { status: res.status }
+      );
+    }
+
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error fetching tasks:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: 'Failed to fetch tasks',
-      data: [] 
-    }, { status: 500 });
+    console.error('Tasks fetch error:', error);
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: Request) {
   try {
-    // Check if user is authenticated
-    if (!isServerAuthenticated()) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'Unauthorized',
-        data: null 
-      }, { status: 401 });
+    const payload = await request.json();
+    
+    // Validate required fields
+    if (!payload.title || !payload.description || !payload.storyId) {
+      return NextResponse.json(
+        { message: 'Title, description, and story ID are required' },
+        { status: 400 }
+      );
     }
 
-    // Parse the request body
-    const taskData = await request.json();
+    const cookieStore = await cookies();
+    const token = cookieStore.get('authToken');
 
-    // Call our backend API using the serverFetch utility
-    const data = await serverFetch('/tasks', {
+    if (!token) {
+      return NextResponse.json(
+        { message: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const res = await fetch(`${BACKEND}/tasks`, {
       method: 'POST',
-      body: JSON.stringify(taskData)
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token.value}`,
+      },
+      body: JSON.stringify(payload),
     });
-    
-    return NextResponse.json(data, { status: 201 });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { message: data.message || 'Failed to create task' },
+        { status: res.status }
+      );
+    }
+
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error creating task:', error);
-    return NextResponse.json({ 
-      success: false,
-      error: 'Failed to create task',
-      data: null
-    }, { status: 500 });
+    console.error('Task creation error:', error);
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

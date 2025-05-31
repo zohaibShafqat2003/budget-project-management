@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -10,23 +10,23 @@ import Link from "next/link"
 import { taskApi } from "@/lib/api"
 import { formatDistanceToNow } from "date-fns"
 
-interface TaskSummaryItem {
+interface Task {
   id: string;
   title?: string;
   name?: string;
   status: string;
   priority: string;
-  dueDate?: string | null;
+  dueDate: string | null;
   projectName?: string;
   assignee?: {
     firstName?: string;
     lastName?: string;
     avatar?: string;
-  } | null;
+  };
 }
 
 export function TaskSummary() {
-  const [tasks, setTasks] = useState<TaskSummaryItem[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -132,7 +132,7 @@ export function TaskSummary() {
                         <Badge variant="outline" className={`${getPriorityColor(task.priority)} text-white text-xs`}>
                           {task.priority}
                         </Badge>
-                        <span className="text-xs text-muted-foreground">{formatDueDate(task.dueDate || null)}</span>
+                        <span className="text-xs text-muted-foreground">{formatDueDate(task.dueDate)}</span>
                       </div>
                     </div>
                   </div>

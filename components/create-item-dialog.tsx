@@ -37,80 +37,20 @@ export type EpicStatus = 'To Do' | 'In Progress' | 'Done'; // from Epic interfac
 export type StoryStatus = 'Backlog' | 'To Do' | 'In Progress' | 'In Review' | 'Done' | 'Blocked'; // from Story interface
 export type TaskStatus = 'Backlog' | 'To Do' | 'In Progress' | 'In Review' | 'Done' | 'Blocked'; // from Task interface
 
-// Define simplified interfaces that don't require createdAt and updatedAt
-export interface ProjectSimple {
-  id: string;
-  name: string;
-  projectIdStr: string;
-  status: string;
-}
-
-export interface EpicSimple {
-  id: string;
-  name: string;
-  description?: string;
-  projectId: string;
-  status: string;
-  startDate?: string;
-  endDate?: string;
-  priority?: string;
-}
-
-export interface StorySimple {
-  id: string;
-  title: string;
-  description?: string;
-  epicId?: string;
-  projectId: string;
-  sprintId?: string;
-  assigneeId?: string;
-  reporterId?: string;
-  status: string;
-  priority: string;
-  points?: number;
-  isReady: boolean;
-  labels?: string[];
-}
-
-export interface TaskSimple {
-  id: string;
-  title: string;
-  description?: string;
-  projectId: string;
-  storyId?: string;
-  epicId?: string;
-  assigneeId?: string;
-  reporterId?: string;
-  status: string;
-  priority: string;
-  type: 'Task' | 'Bug' | 'Subtask';
-  estimatedHours?: number;
-  dueDate?: Date;
-  labels?: string[];
-}
-
-export interface UserSimple {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: string;
-}
-
 interface CreateItemDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onItemCreated: (item: EpicSimple | StorySimple | TaskSimple) => void
+  onItemCreated: (item: Epic | Story | Task) => void // Callback for when any item is created
   
   // Contextual data passed from the parent page
   projectId: string | null
   sprintId?: string | null // Optional, relevant for Stories/Tasks
   
   // Lists for populating dropdowns
-  projects: ProjectSimple[] // All projects for selection if no specific projectId is set
-  epics: EpicSimple[]       // Epics for the selected project (for linking stories/tasks)
-  projectStories: StorySimple[] // Stories for the selected project (for linking tasks)
-  users: UserSimple[]       // Users for assignment
+  projects: Project[] // All projects for selection if no specific projectId is set
+  epics: Epic[]       // Epics for the selected project (for linking stories/tasks)
+  projectStories: Story[] // Stories for the selected project (for linking tasks)
+  users: User[]       // Users for assignment
   reporterId?: string  // Optional: if creating on behalf of someone, or prefill current user
 
   // New props for initial type and default values
@@ -280,6 +220,8 @@ export function CreateItemDialog({
             points: storyPoints ? parseInt(storyPoints) : undefined, 
             assigneeId: assigneeId || undefined,
             reporterId: reporterId || undefined,
+            sprintId: sprintId || undefined, // Assign to current sprint if provided
+            labels: parsedLabels,
             isReady: false, // Default value for isReady
           });
           break;
@@ -303,6 +245,7 @@ export function CreateItemDialog({
             epicId: selectedEpicId || undefined,
             storyId: selectedStoryId || undefined, // Link to story if selected, otherwise epic
             dueDate,
+            labels: parsedLabels,
             estimatedHours: estimatedHours ? parseFloat(estimatedHours) : undefined,
           });
           break;
@@ -312,7 +255,7 @@ export function CreateItemDialog({
           throw new Error(`Invalid item type: ${exhaustiveCheck}`);
       }
       
-      onItemCreated(newItem as unknown as EpicSimple | StorySimple | TaskSimple);
+      onItemCreated(newItem);
       onOpenChange(false);
 
     } catch (err) {
@@ -328,20 +271,7 @@ export function CreateItemDialog({
   // Filter epics based on selected project
   const availableEpics = selectedProjectId ? epics.filter(e => e.projectId === selectedProjectId) : [];
   // Filter stories based on selected project (and optionally selected epic if implementing cascading dropdowns)
-  const availableStories = selectedProjectId ? projectStories.filter(s => {
-    // First make sure the story belongs to the selected project
-    if (s.projectId !== selectedProjectId) {
-      return false;
-    }
-    
-    // If an epic is selected, only include stories from that epic
-    if (selectedEpicId) {
-      return s.epicId === selectedEpicId;
-    }
-    
-    // If no epic selected, include all stories from the project
-    return true;
-  }) : [];
+  const availableStories = selectedProjectId ? projectStories.filter(s => s.projectId === selectedProjectId && (selectedEpicId ? s.epicId === selectedEpicId : true)) : [];
 
 
   const renderItemSpecificFields = () => {
@@ -427,21 +357,11 @@ export function CreateItemDialog({
                         <SelectItem value="">None</SelectItem>
                         {/* Show stories from selected epic, or project-level stories if no epic selected */}
                         {availableStories
-                          .filter(story => {
-                            if (selectedEpicId) {
-                              return story.epicId === selectedEpicId;
-                            }
-                            return true; // If no epic selected, show all stories
-                          })
+                          .filter(story => selectedEpicId ? story.epicId === selectedEpicId : true)
                           .map(story => (
                             <SelectItem key={story.id} value={story.id}>{story.title}</SelectItem>
                         ))}
-                         {availableStories.filter(story => {
-                           if (selectedEpicId) {
-                             return story.epicId === selectedEpicId;
-                           }
-                           return true;
-                         }).length === 0 && <SelectItem value="" disabled>No stories available</SelectItem>}
+                         {availableStories.filter(story => selectedEpicId ? story.epicId === selectedEpicId : true).length === 0 && <SelectItem value="" disabled>No stories available</SelectItem>}
                     </SelectContent>
                 </Select>
                 </div>

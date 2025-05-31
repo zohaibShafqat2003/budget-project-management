@@ -1,14 +1,10 @@
-// Re-export all types from our API modules for convenience
-export * from './api';
-
-// Preserve old interfaces for backward compatibility
-// These will be deprecated in favor of the ones from api/
 export interface User {
   id: string
   email: string
-  firstName: string
-  lastName: string
-  role?: string
+  name: string
+  avatar?: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 export interface Project {

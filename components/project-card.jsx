@@ -64,45 +64,45 @@ export function ProjectCard({
   return (
     <Link href={`/projects/${projectId}`} className="block">
       <Card className="overflow-hidden hover:shadow-md transition-shadow">
-        <CardHeader className="pb-2">
-          <div className="flex justify-between items-start">
-            <div>
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-start">
+          <div>
               <CardTitle className="text-lg font-bold">{projectName}</CardTitle>
               {projectIdStr && <div className="text-xs text-muted-foreground">{projectIdStr}</div>}
-            </div>
+          </div>
             <Badge variant="outline" className={`${getStatusColor(status)} text-white`}>
               {status}
-            </Badge>
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="pb-2">
+        <div className="space-y-4">
+          <div className="flex items-center text-sm text-muted-foreground">
+            <Users className="mr-1 h-4 w-4" />
+            <span>{clientName}</span>
           </div>
-        </CardHeader>
-        <CardContent className="pb-2">
-          <div className="space-y-4">
-            <div className="flex items-center text-sm text-muted-foreground">
-              <Users className="mr-1 h-4 w-4" />
-              <span>{clientName}</span>
-            </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Progress</span>
-                <span>{progress}%</span>
-              </div>
-              <Progress value={progress} className="h-2" />
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Progress</span>
+              <span>{progress}%</span>
             </div>
+            <Progress value={progress} className="h-2" />
+          </div>
 
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="flex items-center">
-                <DollarSign className="mr-1 h-4 w-4 text-muted-foreground" />
-                <span>{budget}</span>
-              </div>
-              <div className="flex items-center">
-                <Calendar className="mr-1 h-4 w-4 text-muted-foreground" />
-                <span>{dueDate}</span>
-              </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="flex items-center">
+              <DollarSign className="mr-1 h-4 w-4 text-muted-foreground" />
+              <span>{budget}</span>
+            </div>
+            <div className="flex items-center">
+              <Calendar className="mr-1 h-4 w-4 text-muted-foreground" />
+              <span>{dueDate}</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CardContent>
+    </Card>
     </Link>
   )
 }

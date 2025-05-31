@@ -160,10 +160,10 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {projects.length > 0 ? (
                   projects.map(project => (
-                    <ProjectCard
+            <ProjectCard
                       key={project.id}
                       title={project.name}
                       client={project.clientName || project.nameOfClient || 'No Client'}
@@ -186,11 +186,11 @@ export default function Dashboard() {
                     </Button>
                   </div>
                 )}
-              </div>
+          </div>
               {projects.length > 0 && (
-                <Button variant="outline" asChild>
-                  <Link href="/projects">View All Projects</Link>
-                </Button>
+          <Button variant="outline" asChild>
+            <Link href="/projects">View All Projects</Link>
+          </Button>
               )}
             </>
           )}

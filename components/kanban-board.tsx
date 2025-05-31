@@ -48,42 +48,31 @@ import {
   deleteStory,
 } from "@/lib/db"
 import React from "react"
-import { CreatableItemType, EpicSimple, StorySimple, TaskSimple, UserSimple } from "./create-item-dialog"
 
 interface KanbanBoardProps {
   projectId: string;
+  boardId: string;   // May not be directly used if sprintId dictates content
   sprintId: string;
-  epics: EpicSimple[];
-  stories: StorySimple[];
-  tasks: TaskSimple[];
-  users: UserSimple[];
-  onCreateItem: (type: CreatableItemType, defaults?: { epicId?: string, projectId?: string, storyId?: string }) => void;
-  onUpdateStoryStatus: (storyId: string, status: string) => Promise<void>;
-  onUpdateTaskStatus: (taskId: string, status: string) => Promise<void>;
 }
 
-// Enhance the StorySimple and TaskSimple interfaces with assignee information
-interface EnhancedStory extends StorySimple {
-  tasks: EnhancedTask[];
-  assignee?: UserSimple;
-}
-
-interface EnhancedTask extends TaskSimple {
-  assignee?: UserSimple;
+// Define a type for items displayed on the board (could be Story or Task)
+// For now, focusing on Stories in sprint, with their Tasks shown in detail
+interface BoardStory extends Story {
+  tasks: Task[]; // Embed tasks within the story for easier rendering
 }
 
 // Column type definition
 type Column = {
-  id: string; // Columns are based on Story statuses
+  id: Story['status']; // Columns are based on Story statuses
   title: string;
-  stories: EnhancedStory[];
+  stories: BoardStory[];
 }
 
-const JIRA_STATUS_ORDER = ['Backlog', 'To Do', 'In Progress', 'In Review', 'Done', 'Blocked'];
+const JIRA_STATUS_ORDER: Story['status'][] = ['Backlog', 'To Do', 'In Progress', 'In Review', 'Done', 'Blocked'];
 
-export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users, onCreateItem, onUpdateStoryStatus, onUpdateTaskStatus }: KanbanBoardProps) {
+export function KanbanBoard({ projectId, boardId, sprintId }: KanbanBoardProps) {
   const [columns, setColumns] = useState<Column[]>([])
-  const [selectedStory, setSelectedStory] = useState<EnhancedStory | null>(null)
+  const [selectedStory, setSelectedStory] = useState<BoardStory | null>(null)
   const [storyDetailOpen, setStoryDetailOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -95,49 +84,27 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
       return;
     }
 
-    // Function to organize stories and tasks into columns
-    function organizeData() {
-      setLoading(true);
-      setError(null);
-      
+    async function fetchSprintStoriesAndTasks() {
+      setLoading(true)
+      setError(null)
       try {
-        // Filter stories by sprint if sprintId is provided
-        const sprintStories = sprintId === 'backlog' 
-          ? stories.filter(s => !s.sprintId) 
-          : stories.filter(s => s.sprintId === sprintId);
-        
-        // Enhance stories with assignee info and their tasks
-        const enhancedStories: EnhancedStory[] = sprintStories.map(story => {
-          // Find tasks for this story
-          const storyTasks = tasks
-            .filter(t => t.storyId === story.id)
-            .map(task => {
-              // Add assignee info to tasks
-              const assignee = task.assigneeId ? users.find(u => u.id === task.assigneeId) : undefined;
-              return { ...task, assignee };
-            });
-          
-          // Add assignee info to story
-          const assignee = story.assigneeId ? users.find(u => u.id === story.assigneeId) : undefined;
-          
-          return {
-            ...story,
-            tasks: storyTasks,
-            assignee
-          };
-        });
+        const storiesInSprint = await getStoriesByProject(projectId, { sprintId });
+        const storiesWithTasks: BoardStory[] = [];
 
-        // Group stories by status
-        const storiesByStatus = enhancedStories.reduce((acc, story) => {
+        for (const story of storiesInSprint) {
+          const tasksForStory = await getTasks({ projectId, storyId: story.id });
+          storiesWithTasks.push({ ...story, tasks: tasksForStory });
+        }
+
+        const storiesByStatus = storiesWithTasks.reduce((acc, story) => {
           const status = story.status;
           if (!acc[status]) {
             acc[status] = [];
           }
           acc[status].push(story);
           return acc;
-        }, {} as Record<string, EnhancedStory[]>);
+        }, {} as Record<Story['status'], BoardStory[]>);
 
-        // Create columns for each status
         const newColumns: Column[] = JIRA_STATUS_ORDER.map(statusKey => ({
           id: statusKey,
           title: statusKey.replace(/([A-Z])/g, ' $1').trim(), // Add space before caps for title
@@ -146,26 +113,26 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
         
         setColumns(newColumns);
       } catch (err) {
-        console.error("Error organizing board data:", err);
-        setError(`Failed to organize board data. ${err instanceof Error ? err.message : ''}`);
+        console.error("Failed to fetch stories/tasks for sprint:", err);
+        setError(`Failed to load sprint items. ${err instanceof Error ? err.message : ''}`);
       } finally {
         setLoading(false);
       }
     }
     
-    organizeData();
-  }, [projectId, sprintId, stories, tasks, users]);
+    fetchSprintStoriesAndTasks();
+  }, [projectId, sprintId]); // Re-fetch when projectId or sprintId changes
 
-  const handleOpenStoryDetail = (story: EnhancedStory) => {
+  const handleOpenStoryDetail = (story: BoardStory) => {
     setSelectedStory(story);
     setStoryDetailOpen(true);
   };
   
-  const handleMoveStory = async (storyId: string, newStatus: string) => {
+  const handleMoveStory = async (storyId: string, newStatus: Story['status']) => {
     let originalColumns: Column[] = []; // Define originalColumns here for potential rollback
     try {
       // Find the story across all columns
-      let storyToMove: EnhancedStory | undefined;
+      let storyToMove: BoardStory | undefined;
       for (const col of columns) {
         storyToMove = col.stories.find(s => s.id === storyId);
         if (storyToMove) break;
@@ -184,13 +151,14 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
         const targetColumn = updatedColumns.find(col => col.id === newStatus);
         if (targetColumn) {
           targetColumn.stories.push({ ...storyToMove, status: newStatus });
-          targetColumn.stories.sort((a,b) => (a.priority || 'Z').localeCompare(b.priority || 'Z')); 
+           targetColumn.stories.sort((a,b) => (a.priority || 'Z').localeCompare(b.priority || 'Z')); 
         }
         return updatedColumns;
       });
 
-      // Call the provided onUpdateStoryStatus function
-      await onUpdateStoryStatus(storyId, newStatus);
+      // Use the specific updateStory function
+      // We need projectId for updateStory as per its definition in lib/db.ts
+      await updateStory(projectId, storyId, { status: newStatus });
 
     } catch (error) {
       console.error("Failed to move story:", error);
@@ -202,12 +170,25 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
   };
   
   const handleDeleteStory = async (storyId: string) => {
-    // Would need a deleteStory method from props
-    alert("Delete functionality not implemented yet");
+    let originalColumns: Column[] = [];
+    try {
+      originalColumns = JSON.parse(JSON.stringify(columns));
+      setColumns(prevColumns => 
+        prevColumns.map(col => ({ ...col, stories: col.stories.filter(s => s.id !== storyId) }))
+      );
+      // Use the specific deleteStory function
+      // We need projectId for deleteStory as per its definition in lib/db.ts
+      await deleteStory(projectId, storyId);
+    } catch (error) {
+      console.error("Failed to delete story:", error);
+      setError("Failed to delete story. Changes may not have been saved.");
+      if(originalColumns.length > 0) setColumns(originalColumns);
+      else alert("Failed to delete story and rollback failed. Please refresh.");
+    }
   };
 
-  // Icon and color utility functions
-  const getPriorityDisplay = (priority: string) => {
+  // Icon and color utility functions (can be moved to a shared utils file)
+  const getPriorityDisplay = (priority: Story['priority'] | Task['priority']) => {
     const colors: Record<string, string> = {
       Highest: "bg-red-600", High: "bg-orange-500", Medium: "bg-yellow-500", Low: "bg-green-500", Lowest: "bg-blue-400",
     };
@@ -223,21 +204,33 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
     };
   };
   
-  const getItemTypeIcon = (itemType: string) => {
-    switch(itemType) {
-      case "Epic":
+  const getItemTypeIcon = (item: Story | Task | Epic) => {
+    // Type guards to narrow down the item type
+    if ('status' in item && !('points' in item) && !('type' in item || 'storyId' in item || 'epicId' in item && typeof item.epicId === 'string') && 'name' in item) {
+        // This is a heuristic for Epic. Assumes Epics have 'name' and 'status', but not 'points' or 'type' (like Task)
+        // and its specific 'epicId' is not a primary concern for type differentation here.
         return <Layers className="h-4 w-4 text-purple-500 mr-1" />;
-      case "Story":
-        return <BookOpen className="h-4 w-4 text-green-500 mr-1" />;
-      case "Task":
-        return <CheckCircle className="h-4 w-4 text-blue-500 mr-1" />;
-      case "Bug":
-        return <AlertCircle className="h-4 w-4 text-red-500 mr-1" />;
-      case "Subtask":
-        return <ListIcon className="h-4 w-4 text-gray-500 mr-1" />;
-      default:
-        return <CheckCircle className="h-4 w-4 text-blue-500 mr-1" />;
     }
+    if ('points' in item && 'isReady' in item) { // 'isReady' and 'points' are specific to Story
+        return <BookOpen className="h-4 w-4 text-green-500 mr-1" />;
+    }
+    if ('type' in item && ('storyId' in item || 'epicId' in item || 'estimatedHours' in item )) { // 'type' and linked IDs or estimatedHours are specific to Task
+        const taskItem = item as Task;
+        switch (taskItem.type) {
+            case "Task": return <CheckCircle className="h-4 w-4 text-blue-500 mr-1" />;
+            case "Bug": return <AlertCircle className="h-4 w-4 text-red-500 mr-1" />;
+            case "Subtask": return <ListIcon className="h-4 w-4 text-gray-500 mr-1" />;
+            default: return <CheckCircle className="h-4 w-4 text-blue-500 mr-1" />;
+        }
+    }
+    // Fallback or more specific Epic check if the above are not sufficient
+    // For instance, if an Epic has a very distinct field not shared by Story/Task
+    // This could also be a point where if item is an Epic, it's handled after Story/Task fail.
+    if ('name' in item && Object.keys(item).length < 5) { // Very basic heuristic if it's an Epic not caught yet.
+         return <Layers className="h-4 w-4 text-purple-500 mr-1" />;
+    }
+
+    return <CheckCircle className="h-4 w-4 text-blue-500 mr-1" />; // Default fallback
   };
 
   if (loading) {
@@ -264,13 +257,8 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
             <h3 className="font-medium text-sm px-2">
               {column.title}{column.stories.length > 0 ? ` (${column.stories.length})` : ''}
               </h3>
-            {/* Add button for creating new stories in this status */}
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8"
-                onClick={() => onCreateItem('Story', { projectId })}
-              >
+            {/* TODO: Add story/task to this specific status? Needs CreateItemDialog enhancement */}
+              <Button variant="ghost" size="icon" className="h-8 w-8">
                 <Plus className="h-4 w-4" />
               <span className="sr-only">Add item</span>
               </Button>
@@ -287,8 +275,8 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
                   <CardContent className="p-3 space-y-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center">
-                            {getItemTypeIcon("Story")}
-                            <span className="text-xs text-muted-foreground font-semibold">{story.id.substring(0,8)}</span>
+                            {getItemTypeIcon(story)}
+                            <span className="text-xs text-muted-foreground font-semibold">{story.id.substring(0,8)}</span> {/* Short ID or Key if available */}
                         </div>
                         {story.assignee && (
                           <Avatar className="h-6 w-6">
@@ -359,15 +347,15 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
           </div>
         ))}
 
-      {/* Story Detail Dialog */}
+      {/* Story Detail Dialog - Needs significant update to show story info and its tasks */}
       {selectedStory && (
         <Dialog open={storyDetailOpen} onOpenChange={setStoryDetailOpen}>
           <DialogContent className="max-w-3xl">
               <DialogHeader>
                 <div className="flex items-center gap-2 mb-1">
-                {getItemTypeIcon("Story")}
+                {getItemTypeIcon(selectedStory)}
                 <span className="text-sm text-muted-foreground">
-                  {selectedStory.id.substring(0,8)}
+                  {selectedStory.id.substring(0,8)} {/* Or story.key if available */}
                 </span>
                 </div>
               <DialogTitle className="text-xl">{selectedStory.title}</DialogTitle>
@@ -392,7 +380,7 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
                             <CardContent className="p-3">
                               <div className="flex justify-between items-start">
                                 <div className="flex items-center">
-                                  {getItemTypeIcon(task.type)}
+                                  {getItemTypeIcon(task)}
                                   <span className="font-medium text-sm">{task.title}</span>
                                 </div>
                                 <Badge variant="outline" className={`ml-2 ${taskPriority.color} text-white border-transparent`}>
@@ -420,6 +408,8 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
                     <p className="text-sm text-muted-foreground">No tasks for this story.</p>
                   )}
                 </div>
+
+                {/* TODO: Add comments section if applicable */}
               </div>
 
               <div className="space-y-4">
@@ -433,21 +423,10 @@ export function KanbanBoard({ projectId, sprintId, epics, stories, tasks, users,
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Priority</span>
                       <Badge variant="outline" className={`flex items-center gap-1 ${getPriorityDisplay(selectedStory.priority).color} text-white border-transparent`}>
-                        {getPriorityDisplay(selectedStory.priority).icon} {selectedStory.priority}
+                        {getPriorityDisplay(selectedStory.priority).icon} {getPriorityDisplay(selectedStory.priority).name}
                       </Badge>
                     </div>
-                    {selectedStory.assignee && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Assignee</span>
-                        <span>{selectedStory.assignee.firstName} {selectedStory.assignee.lastName}</span>
-                      </div>
-                    )}
-                    {selectedStory.points && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Story Points</span>
-                        <span>{selectedStory.points}</span>
-                      </div>
-                    )}
+                    {/* TODO: Add more details like Assignee, Reporter, Story Points if applicable */}
                   </div>
                 </div>
               </div>
