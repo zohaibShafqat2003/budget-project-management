@@ -3,12 +3,16 @@ import { refreshAccessToken } from "./auth";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 const handleResponse = async (response: Response) => {
-  const data = await response.json();
+  try {
+    const data = await response.json().catch(() => ({}));
   
   if (!response.ok) {
     if (response.status === 401) {
       try {
-        await refreshAccessToken();
+          const newToken = await refreshAccessToken();
+          if (typeof window !== 'undefined' && newToken?.accessToken) {
+            localStorage.setItem('authToken', newToken.accessToken);
+          }
         throw new Error('Token refreshed, please retry the request');
       } catch (refreshError) {
         throw new Error('Authentication failed. Please log in again.');
@@ -18,6 +22,12 @@ const handleResponse = async (response: Response) => {
   }
   
   return data;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return {}; // Handle empty responses
+    }
+    throw error;
+  }
 };
 
 const apiRequest = async (
@@ -68,6 +78,18 @@ export const authApi = {
   
   login: async (credentials: { email: string; password: string }) => {
     return apiRequest('/auth/login', 'POST', credentials);
+  },
+  
+  refreshToken: async (refreshToken: string) => {
+    return apiRequest('/auth/refresh-token', 'POST', { refreshToken });
+  },
+  
+  logout: async () => {
+    return apiRequest('/auth/logout', 'POST');
+  },
+  
+  getCurrentUser: async () => {
+    return apiRequest('/auth/me', 'GET');
   }
 };
 
@@ -118,6 +140,10 @@ export const projectApi = {
     return apiRequest('/projects', 'POST', projectData);
   },
   
+  getAllProjects: async () => {
+    return apiRequest('/projects');
+  },
+  
   getById: async (projectId: string) => {
     return apiRequest(`/projects/${projectId}`);
   },
@@ -134,19 +160,37 @@ export const projectApi = {
     return apiRequest(`/projects/${projectId}`, 'DELETE');
   },
   
+  // Boards under a project
+  getBoards: async (projectId: string) => {
+    return apiRequest(`/projects/${projectId}/boards`);
+  },
+  
+  // Sprints under a project
   getSprints: async (projectId: string) => {
     return apiRequest(`/projects/${projectId}/sprints`);
   },
   
+  // Epics under a project
+  getEpics: async (projectId: string) => {
+    return apiRequest(`/projects/${projectId}/epics`);
+  },
+  
+  // Stories under a project
   getStories: async (projectId: string, sprintId?: string) => {
     const query = sprintId ? `?sprintId=${sprintId}` : '';
     return apiRequest(`/projects/${projectId}/stories${query}`);
+  },
+  
+  // Budget items and summary
+  getBudgetItems: async (projectId: string) => {
+    return apiRequest(`/projects/${projectId}/budgets`);
   },
   
   getBudgetSummary: async (projectId: string) => {
     return apiRequest(`/projects/${projectId}/budgets/summary`);
   },
   
+  // Expenses
   getExpenses: async (projectId: string) => {
     return apiRequest(`/projects/${projectId}/expenses`);
   }
@@ -161,6 +205,10 @@ export const boardApi = {
     return apiRequest(`/projects/${projectId}/boards`, 'POST', boardData);
   },
   
+  getProjectBoards: async (projectId: string) => {
+    return apiRequest(`/projects/${projectId}/boards`);
+  },
+  
   getById: async (boardId: string) => {
     return apiRequest(`/boards/${boardId}`);
   },
@@ -170,6 +218,10 @@ export const boardApi = {
     filterJQL?: string 
   }) => {
     return apiRequest(`/projects/${projectId}/boards/${boardId}`, 'PUT', boardData);
+  },
+  
+  delete: async (boardId: string) => {
+    return apiRequest(`/boards/${boardId}`, 'DELETE');
   },
   
   archive: async (boardId: string) => {
@@ -195,6 +247,10 @@ export const sprintApi = {
     status: string;
   }) => {
     return apiRequest(`/projects/${projectId}/boards/${boardId}/sprints`, 'POST', sprintData);
+  },
+  
+  getProjectSprints: async (projectId: string) => {
+    return apiRequest(`/projects/${projectId}/sprints`);
   },
   
   getById: async (sprintId: string) => {
@@ -235,6 +291,14 @@ export const epicApi = {
     endDate: string;
   }) => {
     return apiRequest(`/projects/${projectId}/epics`, 'POST', epicData);
+  },
+  
+  getAll: async (projectId: string) => {
+    return apiRequest(`/projects/${projectId}/epics`);
+  },
+  
+  getById: async (epicId: string) => {
+    return apiRequest(`/epics/${epicId}`);
   },
   
   getStories: async (epicId: string) => {
@@ -309,6 +373,10 @@ export const taskApi = {
     return apiRequest('/tasks', 'POST', taskData);
   },
   
+  getById: async (taskId: string) => {
+    return apiRequest(`/tasks/${taskId}`);
+  },
+  
   update: async (taskId: string, taskData: {
     estimatedHours?: number;
     status?: string;
@@ -331,6 +399,14 @@ export const budgetApi = {
     return apiRequest(`/projects/${projectId}/budgets`, 'POST', budgetData);
   },
   
+  getItems: async (projectId: string) => {
+    return apiRequest(`/projects/${projectId}/budgets`);
+  },
+  
+  getItemById: async (budgetItemId: string) => {
+    return apiRequest(`/budgets/${budgetItemId}`);
+  },
+  
   updateItem: async (budgetItemId: string, budgetData: {
     amount?: number;
     status?: string;
@@ -351,6 +427,18 @@ export const expenseApi = {
     description: string;
     category: string;
     paymentMethod: string;
+  }) => {
+    return apiRequest(`/projects/${projectId}/expenses`, 'POST', expenseData);
+  },
+  
+  createExpense: async (projectId: string, expenseData: {
+    budgetItemId: string | null;
+    amount: number;
+    description: string;
+    category?: string;
+    date?: string;
+    paymentMethod?: string;
+    paymentStatus?: string;
   }) => {
     return apiRequest(`/projects/${projectId}/expenses`, 'POST', expenseData);
   },

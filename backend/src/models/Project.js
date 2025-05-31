@@ -15,11 +15,11 @@ module.exports = (sequelize, DataTypes) => {
       comment: 'Unique string ID for the project (e.g., "PROJ-123")'
     },
     name: {
-      type: DataTypes.STRING(100),
+      type: DataTypes.STRING(3550),
       allowNull: false,
       validate: {
         notEmpty: true,
-        len: [2, 100]
+        len: [2, 3550]
       }
     },
     clientId: {

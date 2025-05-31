@@ -106,12 +106,13 @@ export default function LoginPage() {
     setErrors({})
 
     try {
-      // Use the backend authentication API
-      const response = await login(formData.email, formData.password)
+      // Use the backend authentication API and pass the rememberMe flag
+      const response = await login(formData.email, formData.password, formData.rememberMe)
       
-      if (formData.rememberMe) {
-        localStorage.setItem("rememberUser", "true")
-      }
+      // No need to manually set this as it's now handled in the login function
+      // if (formData.rememberMe) {
+      //   localStorage.setItem("rememberUser", "true")
+      // }
 
       // Add a short delay before redirecting to ensure tokens are properly stored
       setTimeout(() => {

@@ -6,6 +6,7 @@ import { BrainCircuit } from "lucide-react"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { isAuthenticated, refreshAccessToken } from "@/lib/auth"
+import { toast } from "@/components/ui/use-toast"
 
 export function AuthWrapper({ children }) {
   const pathname = usePathname()
@@ -15,24 +16,47 @@ export function AuthWrapper({ children }) {
     isLoading: true
   })
 
-  useEffect(() => {
+  // Function to check authentication
     const checkAuth = async () => {
       try {
         // Add a small delay to prevent flash of loading state
         await new Promise((resolve) => setTimeout(resolve, 100))
 
         const authenticated = isAuthenticated()
-        setAuthStatus({ isAuthenticated: authenticated, isLoading: false })
         
         // Try to refresh the token if authenticated
         if (authenticated) {
           try {
             await refreshAccessToken()
+          setAuthStatus({ isAuthenticated: true, isLoading: false })
           } catch (error) {
+          // More specific error handling based on error code
+          if (error.code === 'no_token') {
+            // Quietly redirect to login without showing error
+            console.log("Session expired - redirecting to login")
+            setAuthStatus({ isAuthenticated: false, isLoading: false })
+          } else if (error.code === 'refresh_failed') {
+            // Token was rejected by server
+            console.warn("Token refresh rejected by server:", error.message)
+            toast({
+              title: "Session expired",
+              description: "Please login again to continue",
+              variant: "destructive"
+            })
+            setAuthStatus({ isAuthenticated: false, isLoading: false })
+          } else {
+            // Any other error
             console.warn("Token refresh failed:", error)
-            // If refresh fails, user needs to login again
+            toast({
+              title: "Authentication error",
+              description: error.message || "Please login again",
+              variant: "destructive"
+            })
             setAuthStatus({ isAuthenticated: false, isLoading: false })
           }
+        }
+      } else {
+        setAuthStatus({ isAuthenticated: false, isLoading: false })
         }
       } catch (error) {
         console.warn("Auth check failed:", error)
@@ -40,6 +64,8 @@ export function AuthWrapper({ children }) {
       }
     }
 
+  // Initial auth check
+  useEffect(() => {
     checkAuth()
 
     // Listen for storage changes (e.g., login/logout in another tab)
@@ -54,6 +80,23 @@ export function AuthWrapper({ children }) {
     return () => window.removeEventListener("storage", handleStorageChange)
   }, [])
 
+  // Set up periodic token refresh (every 15 minutes)
+  useEffect(() => {
+    // Skip if not authenticated or on auth pages
+    if (!authStatus.isAuthenticated || pathname.startsWith("/auth")) {
+      return;
+    }
+
+    // Schedule token refresh
+    const refreshInterval = setInterval(() => {
+      console.log("Performing scheduled token refresh check");
+      checkAuth();
+    }, 15 * 60 * 1000); // 15 minutes
+
+    return () => clearInterval(refreshInterval);
+  }, [authStatus.isAuthenticated, pathname]);
+
+  // Auth redirect logic
   useEffect(() => {
     if (!authStatus.isLoading && !authStatus.isAuthenticated && !pathname.startsWith("/auth")) {
       router.push("/auth/login")

@@ -57,7 +57,7 @@ export async function getAuthUser(request: NextRequest): Promise<JWTPayload | nu
 
 // Functions to interact with the backend API
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
+export async function login(email: string, password: string, rememberMe: boolean = false): Promise<AuthResponse> {
   try {
     // For development: Allow a demo account to bypass the backend
     if (email === "demo@example.com" && password === "demo123") {
@@ -81,6 +81,19 @@ export async function login(email: string, password: string): Promise<AuthRespon
       localStorage.setItem('refreshToken', demoAuthResponse.refreshToken);
       localStorage.setItem('user', JSON.stringify(demoAuthResponse.user));
       
+      // Set remember me flag
+      if (rememberMe) {
+        localStorage.setItem('rememberMe', 'true');
+        // Set long expiration - 30 days
+        const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000);
+        localStorage.setItem('tokenExpiry', expiryTime.toString());
+      } else {
+        localStorage.removeItem('rememberMe');
+        // Set shorter expiration - 1 day
+        const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
+        localStorage.setItem('tokenExpiry', expiryTime.toString());
+      }
+      
       return demoAuthResponse;
     }
     
@@ -95,7 +108,10 @@ export async function login(email: string, password: string): Promise<AuthRespon
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.message || 'Login failed');
+      return Promise.reject({ 
+        code: 'login_failed', 
+        message: errorData.message || 'Login failed' 
+      });
     }
 
     const data = await response.json();
@@ -103,9 +119,39 @@ export async function login(email: string, password: string): Promise<AuthRespon
     // Store tokens in localStorage - adjust based on your API response structure
     if (data.success) {
       const authData = data.data || data;
+      
+      // Validate that we received the necessary data
+      if (!authData.accessToken && !authData.token) {
+        return Promise.reject({ 
+          code: 'missing_access_token', 
+          message: 'No access token received from server' 
+        });
+      }
+      
+      // Save tokens
       localStorage.setItem('authToken', authData.accessToken || authData.token);
-      localStorage.setItem('refreshToken', authData.refreshToken || '');
+      
+      // Ensure we have a refresh token
+      if (authData.refreshToken) {
+        localStorage.setItem('refreshToken', authData.refreshToken);
+      } else {
+        console.warn('No refresh token received from server during login');
+      }
+      
       localStorage.setItem('user', JSON.stringify(authData.user));
+      
+      // Set remember me flag and token expiry
+      if (rememberMe) {
+        localStorage.setItem('rememberMe', 'true');
+        // Set long expiration - 30 days
+        const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000);
+        localStorage.setItem('tokenExpiry', expiryTime.toString());
+      } else {
+        localStorage.removeItem('rememberMe');
+        // Set shorter expiration - 1 day
+        const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
+        localStorage.setItem('tokenExpiry', expiryTime.toString());
+      }
       
       return {
         user: authData.user,
@@ -113,11 +159,21 @@ export async function login(email: string, password: string): Promise<AuthRespon
         refreshToken: authData.refreshToken || ''
       };
     } else {
-      throw new Error(data.message || 'Login failed');
+      return Promise.reject({ 
+        code: 'invalid_response', 
+        message: data.message || 'Login failed' 
+      });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Login error:', error);
+    
+    // If error already has a code, just pass it through
+    if (error.code) {
     throw error;
+    }
+    
+    // Otherwise wrap in a standard format
+    throw { code: 'unknown_error', message: error.message || 'An unknown error occurred during login' };
   }
 }
 
@@ -148,7 +204,10 @@ export async function register(userData: {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.message || 'Registration failed');
+      return Promise.reject({ 
+        code: 'registration_failed', 
+        message: errorData.message || 'Registration failed' 
+      });
     }
 
     const data = await response.json();
@@ -156,8 +215,25 @@ export async function register(userData: {
     // Store tokens in localStorage - adjust based on your API response structure
     if (data.success) {
       const authData = data.data || data;
+      
+      // Validate that we received the necessary data
+      if (!authData.accessToken && !authData.token) {
+        return Promise.reject({ 
+          code: 'missing_access_token', 
+          message: 'No access token received from server' 
+        });
+      }
+      
+      // Save tokens
       localStorage.setItem('authToken', authData.accessToken || authData.token);
-      localStorage.setItem('refreshToken', authData.refreshToken || '');
+      
+      // Ensure we have a refresh token
+      if (authData.refreshToken) {
+        localStorage.setItem('refreshToken', authData.refreshToken);
+      } else {
+        console.warn('No refresh token received from server during registration');
+      }
+      
       localStorage.setItem('user', JSON.stringify(authData.user));
       
       return {
@@ -166,11 +242,21 @@ export async function register(userData: {
         refreshToken: authData.refreshToken || ''
       };
     } else {
-      throw new Error(data.message || 'Registration failed');
+      return Promise.reject({ 
+        code: 'invalid_response', 
+        message: data.message || 'Registration failed' 
+      });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Registration error:', error);
+    
+    // If error already has a code, just pass it through
+    if (error.code) {
     throw error;
+    }
+    
+    // Otherwise wrap in a standard format
+    throw { code: 'unknown_error', message: error.message || 'An unknown error occurred during registration' };
   }
 }
 
@@ -181,17 +267,17 @@ export async function logout(): Promise<void> {
     if (token) {
       // Only call backend if we have a token
       try {
-        const response = await fetch(`${API_URL}/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
-  
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.warn('Logout error from server:', errorData.message);
+    const response = await fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.warn('Logout error from server:', errorData.message);
         }
       } catch (e) {
         console.warn('Failed to contact server for logout:', e);
@@ -202,6 +288,8 @@ export async function logout(): Promise<void> {
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('tokenExpiry');
+    localStorage.removeItem('rememberMe');
     
   } catch (error) {
     console.error('Logout error:', error);
@@ -209,6 +297,8 @@ export async function logout(): Promise<void> {
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('tokenExpiry');
+    localStorage.removeItem('rememberMe');
     throw error;
   }
 }
@@ -218,7 +308,9 @@ export async function refreshAccessToken(): Promise<{ accessToken: string; refre
     const refreshToken = localStorage.getItem('refreshToken');
     
     if (!refreshToken) {
-      throw new Error('No refresh token found');
+      // Log for debugging but handle gracefully
+      console.warn('No refresh token found - user needs to re-authenticate');
+      return Promise.reject({ code: 'no_token', message: 'Session expired, please login again' });
     }
     
     const response = await fetch(`${API_URL}/auth/refresh-token`, {
@@ -230,7 +322,11 @@ export async function refreshAccessToken(): Promise<{ accessToken: string; refre
     });
 
     if (!response.ok) {
-      throw new Error('Failed to refresh token');
+      const errorData = await response.json();
+      return Promise.reject({ 
+        code: 'refresh_failed', 
+        message: errorData.message || 'Failed to refresh token' 
+      });
     }
 
     const data = await response.json();
@@ -247,20 +343,44 @@ export async function refreshAccessToken(): Promise<{ accessToken: string; refre
         localStorage.setItem('refreshToken', newRefreshToken);
       }
       
+      // Update token expiry based on rememberMe preference
+      const isRemembered = localStorage.getItem('rememberMe') === 'true';
+      if (isRemembered) {
+        // Long expiration - 30 days
+        const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000);
+        localStorage.setItem('tokenExpiry', expiryTime.toString());
+      } else {
+        // Shorter expiration - 1 day
+        const expiryTime = Date.now() + (24 * 60 * 60 * 1000);
+        localStorage.setItem('tokenExpiry', expiryTime.toString());
+      }
+      
       return { 
         accessToken: newAccessToken,
         refreshToken: newRefreshToken
       };
     } else {
-      throw new Error(data.message || 'Invalid response format from server');
+      return Promise.reject({ 
+        code: 'invalid_response', 
+        message: data.message || 'Invalid response format from server' 
+      });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Token refresh error:', error);
     // Clear authentication if refresh fails
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('tokenExpiry');
+    localStorage.removeItem('rememberMe');
+    
+    // If error already has a code, just pass it through
+    if (error.code) {
     throw error;
+    }
+    
+    // Otherwise wrap in a standard format
+    throw { code: 'unknown_error', message: error.message || 'An unknown error occurred' };
   }
 }
 
@@ -280,11 +400,37 @@ export function getCurrentUser(): User | null {
   }
 }
 
+export function isTokenExpired(): boolean {
+  if (typeof window === 'undefined') {
+    return true;
+  }
+  
+  const expiryTimeStr = localStorage.getItem('tokenExpiry');
+  if (!expiryTimeStr) {
+    return true;
+  }
+  
+  const expiryTime = parseInt(expiryTimeStr, 10);
+  return Date.now() > expiryTime;
+}
+
 export function isAuthenticated(): boolean {
   if (typeof window === 'undefined') {
     return false;
   }
   
   const token = localStorage.getItem('authToken');
-  return !!token;
+  if (!token) {
+    return false;
+  }
+  
+  // Check if token has expired
+  if (isTokenExpired()) {
+    // Clear expired tokens
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
+    return false;
+  }
+  
+  return true;
 }

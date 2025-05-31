@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "migrate": "npx sequelize-cli db:migrate",
     "seed": "npx sequelize-cli db:seed:all",
+    "custom-seed": "node seed.js",
     "create-migration": "npx sequelize-cli migration:generate --name",
     "create-seed": "npx sequelize-cli seed:generate --name",
     "db:reset": "cross-env FORCE_DB_SYNC=true ALLOW_DB_RESET=true node src/server.js",

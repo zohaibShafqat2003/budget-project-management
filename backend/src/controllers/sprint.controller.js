@@ -357,9 +357,9 @@ exports.completeSprint = async (req, res, next) => {
     const sprint = await Sprint.findByPk(id, {
       include: [
         { 
-          model: Story, 
-          as: 'stories',
-          include: [{ model: Task, as: 'tasks' }]
+        model: Story, 
+        as: 'stories',
+        include: [{ model: Task, as: 'tasks' }]
         },
         {
           model: Board,
@@ -425,30 +425,30 @@ exports.completeSprint = async (req, res, next) => {
     const projectId = sprint.board ? sprint.board.projectId : null;
     
     if (projectId) {
-      // Calculate velocity (if there are previous sprints)
-      const previousSprints = await Sprint.findAll({
-        where: {
+    // Calculate velocity (if there are previous sprints)
+    const previousSprints = await Sprint.findAll({
+      where: {
           id: { [Op.ne]: sprint.id },
-          status: 'Completed',
+        status: 'Completed',
           boardId: { [Op.in]: sequelize.literal(`(SELECT id FROM "Boards" WHERE "projectId" = '${projectId}')`) }
-        },
-        order: [['endDate', 'DESC']],
-        limit: 3,
-        transaction
-      });
+      },
+      order: [['endDate', 'DESC']],
+      limit: 3,
+      transaction
+    });
+    
+    if (previousSprints.length > 0) {
+      const totalCompletedPoints = previousSprints.reduce((sum, s) => sum + s.completedPoints, 0) + completedPoints;
+      const velocity = Math.round(totalCompletedPoints / (previousSprints.length + 1));
       
-      if (previousSprints.length > 0) {
-        const totalCompletedPoints = previousSprints.reduce((sum, s) => sum + s.completedPoints, 0) + completedPoints;
-        const velocity = Math.round(totalCompletedPoints / (previousSprints.length + 1));
-        
-        // Update project's sprint velocity
-        await Project.update(
-          { metadata: { velocity } },
-          { 
+      // Update project's sprint velocity
+      await Project.update(
+        { metadata: { velocity } },
+        { 
             where: { id: projectId },
-            transaction
-          }
-        );
+          transaction
+        }
+      );
       }
     }
     
