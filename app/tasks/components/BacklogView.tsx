@@ -44,23 +44,34 @@ interface BacklogViewProps {
   onAssignStoryToSprint: (storyId: string, sprintId: string) => Promise<void>
   onUpdateStoryStatus: (storyId: string, status: Story['status']) => Promise<void>
   onOpenCreateItemDialog: (type: CreatableItemType, defaults: { epicId?: string, projectId?: string, storyId?: string }) => void
+  onDeleteEpic?: (epicId: string) => Promise<void>
 }
 
+// Define valid status and priority options
+const VALID_STATUS_OPTIONS = ['To Do', 'In Progress', 'Review', 'Done'] as const;
+const VALID_PRIORITY_OPTIONS = ['Low', 'Medium', 'High', 'Critical'] as const;
+
+// Update priority mapping to match backend expectations
+const priorityMap: Record<typeof VALID_PRIORITY_OPTIONS[number], number> = {
+  'Low': 0,
+  'Medium': 1,
+  'High': 2,
+  'Critical': 3
+};
+
 // Helper function for priority display
-const getPriorityDisplay = (priority: Story['priority'] | Task['priority']) => {
+const getPriorityDisplay = (priority: typeof VALID_PRIORITY_OPTIONS[number]) => {
   const colors: Record<string, string> = {
-    Highest: "bg-red-600", 
+    Critical: "bg-red-600", 
     High: "bg-orange-500", 
     Medium: "bg-yellow-500", 
-    Low: "bg-green-500", 
-    Lowest: "bg-blue-400",
+    Low: "bg-green-500"
   }
   const icons: Record<string, React.ReactNode> = {
-    Highest: <ArrowUp className="h-3 w-3" />, 
+    Critical: <ArrowUp className="h-3 w-3" />, 
     High: <ArrowUp className="h-3 w-3" />,
     Medium: <ArrowRight className="h-3 w-3" />, 
-    Low: <ArrowDown className="h-3 w-3" />,
-    Lowest: <ArrowDown className="h-3 w-3" />,
+    Low: <ArrowDown className="h-3 w-3" />
   }
   return {
     color: colors[priority] || "bg-gray-500",
@@ -90,13 +101,14 @@ export function BacklogView({
   users,
   onAssignStoryToSprint,
   onUpdateStoryStatus,
-  onOpenCreateItemDialog
+  onOpenCreateItemDialog,
+  onDeleteEpic
 }: BacklogViewProps) {
   const [sortBy, setSortBy] = useState<"priority" | "id">("priority")
   const [expandedEpics, setExpandedEpics] = useState<string[]>([])
   
-  // Filter stories without an epic association
-  const storiesWithoutEpic = stories.filter(story => !story.epicId && (!story.sprintId || story.status === 'Backlog'))
+  // Filter stories without epic and sprint
+  const storiesWithoutEpic = stories.filter((story) => !story.epicId && !story.sprintId);
   
   // Get active sprints for assignment
   const activeSprints = sprints.filter(s => s.status === 'Active' || s.status === 'Planning')
@@ -105,10 +117,7 @@ export function BacklogView({
   const sortStories = (storiesToSort: Story[], sortKey: "priority" | "id") => {
     return [...storiesToSort].sort((a, b) => {
       if (sortKey === "priority") {
-        const priorityOrder: Record<Story['priority'], number> = { 
-          "Highest": 0, "High": 1, "Medium": 2, "Low": 3, "Lowest": 4 
-        }
-        return (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99)
+        return (priorityMap[a.priority] ?? 99) - (priorityMap[b.priority] ?? 99)
       }
       return a.id.localeCompare(b.id)
     })
@@ -148,9 +157,23 @@ export function BacklogView({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onUpdateStoryStatus(story.id, 'To Do')}>
+                <DropdownMenuItem
+                  disabled={story.status === 'Review'}
+                  onSelect={async () => {
+                    try {
+                      await onUpdateStoryStatus(story.id, 'To Do');
+                    } catch (e: any) {
+                      alert(e.message || 'Cannot move to To Do');
+                    }
+                  }}
+                >
                   Move to To Do
                 </DropdownMenuItem>
+                {story.status === 'Review' && (
+                  <Badge variant="destructive" className="ml-auto">
+                    In Review
+                  </Badge>
+                )}
                 {activeSprints.length > 0 && (
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>Assign to Sprint</DropdownMenuSubTrigger>
@@ -191,11 +214,10 @@ export function BacklogView({
                 {priorityInfo.icon} {priorityInfo.name}
               </span>
             </Badge>
-            {story.points != null && (
-              <Badge variant="secondary" className="px-1.5 py-0.5">
-                {story.points} SP
-              </Badge>
-            )}
+            {/* Story points */}
+            <div className="text-sm text-muted-foreground">
+              {story.points || 0} points
+            </div>
           </div>
           <div className="flex items-center justify-end mt-2">
             {assignee && (
@@ -362,6 +384,21 @@ export function BacklogView({
           </Button>
         )}
       </div>
+
+      {/* Epic actions dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={() => onDeleteEpic?.(epics[0].id)}>
+            Delete Epic
+          </DropdownMenuItem>
+          {/* ... other menu items ... */}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 } 

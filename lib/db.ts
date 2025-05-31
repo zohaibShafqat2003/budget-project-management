@@ -756,8 +756,8 @@ export interface Story {
   assignee?: User;
   reporterId?: string;
   reporter?: User;
-  status: 'Backlog' | 'To Do' | 'In Progress' | 'In Review' | 'Done' | 'Blocked';
-  priority: 'Highest' | 'High' | 'Medium' | 'Low' | 'Lowest';
+  status: 'To Do' | 'In Progress' | 'Review' | 'Done';
+  priority: 'Low' | 'Medium' | 'High' | 'Critical';
   points?: number;
   isReady?: boolean;
   sprintId?: string;
@@ -997,8 +997,8 @@ export async function createStory(
       title: storyData.title,
       description: storyData.description || '',
       assigneeId: storyData.assigneeId,
-      status: storyData.status,
-      priority: storyData.priority,
+      status: storyData.status || 'To Do', // Default to 'To Do' instead of 'Backlog'
+      priority: storyData.priority || 'Medium',
       points: storyData.points,
       isReady: storyData.isReady || false,
       createdAt: new Date(),
@@ -1020,7 +1020,7 @@ export async function getStoryById(storyId: string): Promise<Story> {
       projectId: "1",
       title: "Default Story",
       description: "Default story description",
-      status: "Backlog",
+      status: "To Do",
       priority: "Medium",
       createdAt: new Date(),
       updatedAt: new Date()

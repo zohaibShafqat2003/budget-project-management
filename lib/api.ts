@@ -312,8 +312,8 @@ export const epicApi = {
     return apiRequest(`/epics/${epicId}`, 'PUT', epicData);
   },
   
-  delete: async (epicId: string) => {
-    return apiRequest(`/epics/${epicId}`, 'DELETE');
+  delete: async (projectId: string, epicId: string) => {
+    return apiRequest(`/projects/${projectId}/epics/${epicId}`, 'DELETE');
   }
 };
 
@@ -398,6 +398,26 @@ export const taskApi = {
     });
     const queryString = queryParams.toString();
     return apiRequest(`/tasks${queryString ? `?${queryString}` : ''}`);
+  },
+  
+  assign: async (taskId: string, assigneeId: string | null) => {
+    return apiRequest(`/tasks/${taskId}/assign`, 'PUT', { assigneeId });
+  },
+  
+  addLabels: async (taskId: string, labelIds: string[]) => {
+    return apiRequest(`/tasks/${taskId}/labels`, 'POST', { labelIds });
+  },
+  
+  removeLabels: async (taskId: string, labelIds: string[]) => {
+    return apiRequest(`/tasks/${taskId}/labels`, 'DELETE', { labelIds });
+  },
+  
+  addDependency: async (sourceTaskId: string, targetTaskId: string, type: string) => {
+    return apiRequest('/tasks/dependencies', 'POST', { sourceTaskId, targetTaskId, type });
+  },
+  
+  removeDependency: async (dependencyId: string) => {
+    return apiRequest(`/tasks/dependencies/${dependencyId}`, 'DELETE');
   }
 };
 

@@ -2,6 +2,36 @@ const { Task, Story, User, TaskDependency, ProjectLabel, Sprint } = require('../
 const { sequelize } = require('../config/db');
 const { Op } = require('sequelize');
 
+// Define allowed status transitions
+const ALLOWED_STATUS_TRANSITIONS = {
+  'Created': ['To Do'],
+  'To Do': ['In Progress', 'Blocked'],
+  'In Progress': ['In Review', 'Blocked'],
+  'In Review': ['Done', 'Blocked'],
+  'Done': [],
+  'Blocked': ['To Do', 'In Progress', 'In Review']
+};
+
+// Check if a task has unresolved blockers
+async function hasUnresolvedBlocker(taskId) {
+  const blockers = await TaskDependency.findAll({
+    where: {
+      targetTaskId: taskId,
+      type: 'blocks'
+    },
+    include: [{
+      model: Task,
+      as: 'sourceTask',
+      where: {
+        status: {
+          [Op.notIn]: ['Done', 'Closed']
+        }
+      }
+    }]
+  });
+  return blockers.length > 0;
+}
+
 // Get all tasks
 exports.getAllTasks = async (req, res, next) => {
   console.log('>>> HIT getAllTasks with query:', req.query);
@@ -222,6 +252,28 @@ exports.updateTask = async (req, res, next) => {
     
     // Handle status transitions
     if (req.body.status && req.body.status !== task.status) {
+      // Check if the transition is allowed
+      const allowedTransitions = ALLOWED_STATUS_TRANSITIONS[task.status] || [];
+      if (!allowedTransitions.includes(req.body.status)) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status transition from ${task.status} to ${req.body.status}`
+        });
+      }
+
+      // Check for blockers when moving to In Progress
+      if (req.body.status === 'In Progress') {
+        const hasBlockers = await hasUnresolvedBlocker(task.id);
+        if (hasBlockers) {
+          await transaction.rollback();
+          return res.status(400).json({
+            success: false,
+            message: 'Cannot move task to In Progress: there are unresolved blockers'
+          });
+        }
+      }
+
       // Enforce assignee for In Progress tasks
       if (req.body.status === 'In Progress' && !task.assigneeId && !req.body.assigneeId) {
         await transaction.rollback();

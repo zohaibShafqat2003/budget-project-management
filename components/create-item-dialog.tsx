@@ -33,6 +33,10 @@ interface CreateItemDialogProps extends CommonProps {
   itemType: CreatableItemType
 }
 
+// Define valid status and priority options
+const VALID_STATUS_OPTIONS = ['To Do', 'In Progress', 'Review', 'Done'] as const;
+const VALID_PRIORITY_OPTIONS = ['Low', 'Medium', 'High', 'Critical'] as const;
+
 export function CreateItemDialog({ 
   open, 
   onOpenChange, 
@@ -60,7 +64,7 @@ export function CreateItemDialog({
   const [storyTitle, setStoryTitle] = useState("")
   const [storyDescription, setStoryDescription] = useState("")
   const [storyPoints, setStoryPoints] = useState<number | undefined>(undefined)
-  const [storyStatus, setStoryStatus] = useState<Story['status']>("Backlog")
+  const [storyStatus, setStoryStatus] = useState<Story['status']>("To Do")
   const [storyPriority, setStoryPriority] = useState<Story['priority']>("Medium")
   const [storyProjectId, setStoryProjectId] = useState<string | null>(projectId)
   const [storyEpicId, setStoryEpicId] = useState<string | null>(null)
@@ -132,7 +136,7 @@ export function CreateItemDialog({
     setStoryTitle("")
     setStoryDescription("")
     setStoryPoints(undefined)
-    setStoryStatus("Backlog")
+   
     setStoryPriority("Medium")
     setStoryEpicId(null)
     setStoryIsReady(false)
@@ -223,7 +227,7 @@ export function CreateItemDialog({
     setIsSubmitting(true)
     
     try {
-      const newStory = await createStory(storyProjectId, {
+      const storyData = {
         title: storyTitle,
         description: storyDescription,
         points: storyPoints,
@@ -231,8 +235,12 @@ export function CreateItemDialog({
         priority: storyPriority,
         isReady: storyIsReady,
         assigneeId: storyAssigneeId || undefined,
-        projectId: storyProjectId
-      })
+        projectId: storyProjectId,
+        epicId: storyEpicId || undefined // Include epicId if selected
+      }
+
+      // Use the project-specific endpoint
+      const newStory = await createStory(storyProjectId, storyData)
       
       onItemCreated(newStory)
       toast({

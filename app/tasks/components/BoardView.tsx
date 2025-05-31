@@ -63,6 +63,16 @@ type Column = {
 // Status columns for Jira-style workflow
 const BOARD_STATUS_COLUMNS: Story['status'][] = ['To Do', 'In Progress', 'In Review', 'Done']
 
+// Define valid status transitions
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+  'Backlog': ['To Do'],
+  'To Do': ['In Progress', 'Blocked'],
+  'In Progress': ['In Review', 'Blocked'],
+  'In Review': ['Done', 'Blocked'],
+  'Done': [],
+  'Blocked': ['To Do', 'In Progress', 'In Review']
+};
+
 // Helper functions for displaying priority and item type icons
 const getPriorityDisplay = (priority: Story['priority'] | Task['priority']) => {
   const colors: Record<string, string> = {
@@ -196,73 +206,62 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
 
   // Handle drag end event
   const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
+    const { active, over } = event;
+    if (!over) return cleanupDrag();
 
-    if (!over) {
-      setActiveId(null)
-      setActiveItem(null)
-      return
-    }
-
-    const activeId = active.id as string
-    const overId = over.id as string
-
-    // Handle dropping on a column
-    if (BOARD_STATUS_COLUMNS.includes(overId as Story['status'])) {
-      const newStatus = overId as Story['status']
+    // If dropped onto a column:
+    if (BOARD_STATUS_COLUMNS.includes(over.id as string)) {
+      const newStatus = over.id as string;
+      let storyToMove: BoardStory | undefined;
       
-      // Find the column and story
-      let storyToMove: BoardStory | undefined
-      let sourceColumnId: Story['status'] | undefined
-
-      for (const column of columns) {
-        const storyIndex = column.stories.findIndex(s => s.id === activeId)
-        if (storyIndex !== -1) {
-          storyToMove = column.stories[storyIndex]
-          sourceColumnId = column.id
-          break
+      // Find the story being moved
+      for (const col of columns) {
+        const found = col.stories.find((s) => s.id === active.id);
+        if (found) { 
+          storyToMove = found; 
+          break; 
         }
       }
 
-      if (!storyToMove || !sourceColumnId) return
-
-      // Create a backup of columns for rollback
-      const originalColumns = JSON.parse(JSON.stringify(columns))
-
-      // Update the columns optimistically
-      setColumns(prevColumns => {
-        const updatedColumns = prevColumns.map(col => ({
-          ...col,
-          stories: col.stories.filter(s => s.id !== activeId)
-        }))
-        
-        const targetColumn = updatedColumns.find(col => col.id === newStatus)
-        if (targetColumn && storyToMove) {
-          targetColumn.stories.push({ ...storyToMove, status: newStatus })
-          targetColumn.stories.sort((a, b) => 
-            (a.priority || 'Z').localeCompare(b.priority || 'Z')
-          )
+      if (storyToMove) {
+        // Check if the status transition is valid
+        const allowedTransitions = VALID_STATUS_TRANSITIONS[storyToMove.status] || [];
+        if (!allowedTransitions.includes(newStatus)) {
+          alert(`Invalid transition: ${storyToMove.status} → ${newStatus}`);
+          return cleanupDrag();
         }
-        return updatedColumns
-      })
 
-      try {
-        // Update the story status in the backend
-        await updateStory(projectId, activeId, { status: newStatus })
-      } catch (err) {
-        console.error(`Failed to update story status to ${newStatus}:`, err)
-        // Revert to original state on error
-        setColumns(originalColumns)
-        // Show error toast or notification to user
-        alert(`Failed to update story status: ${err instanceof Error ? err.message : 'Unknown error'}`)
+        try {
+          // Check for blockers if moving to In Progress
+          if (newStatus === 'In Progress' && storyToMove.blocked) {
+            alert('Cannot move to In Progress: there are unresolved blockers');
+            return cleanupDrag();
+          }
+
+          await updateStory(projectId, storyToMove.id, { status: newStatus })
+          await refreshBoardData();
+        } catch (e: any) {
+          alert(e.message || 'Unable to change status. Reverting.');
+          return cleanupDrag();
+        }
       }
-    } else {
-      // Handle reordering within a column (if needed in the future)
     }
-    
-    setActiveId(null)
-    setActiveItem(null)
-  }
+
+    // If dropped onto another story (move a task between stories):
+    if (over.data.current?.type === 'story' && active.data.current?.type === 'task') {
+      const newStoryId = over.id as string;
+      const taskIdToMove = active.id as string;
+      try {
+        await updateTask(taskIdToMove, { storyId: newStoryId });
+        await refreshBoardData();
+      } catch (e: any) {
+        alert(e.message || 'Unable to move task. Reverting.');
+        return cleanupDrag();
+      }
+    }
+
+    cleanupDrag();
+  };
 
   // Handle task status change - new function
   const handleTaskStatusChange = async (taskId: string, newStatus: Task['status']) => {
