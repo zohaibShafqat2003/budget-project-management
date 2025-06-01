@@ -236,6 +236,7 @@ router.post('/epics/:epicId/stories', [
   body('points').optional().isInt({ min: 0 }),
   body('acceptanceCriteria').optional().isString().trim(),
   body('startDate').optional().isISO8601(),
+  
   body('dueDate').optional().isISO8601(),
   body('businessValue').optional().isInt({ min: 0, max: 100 }),
   body('labelIds').optional().isArray(),

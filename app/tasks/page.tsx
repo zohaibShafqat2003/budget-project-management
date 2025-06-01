@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Label } from "@/components/ui/label"
 import { CreatableItemType } from "@/components/create-item-dialog"
 import { CreateItemDialog } from "@/components/create-item-dialog"
+import { CreateSprintDialog } from "@/components/create-sprint-dialog"
 
 // Import the new components
 import { BoardView } from "./components/BoardView"
@@ -38,6 +39,8 @@ import {
   updateTask,
   deleteStory,
   deleteTask,
+  startSprint,
+  completeSprint
 } from "@/lib/db"
 
 // Mock deleteEpic function since it's not exported from db.ts
@@ -82,6 +85,9 @@ export default function TasksPage() {
   // UI state
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Additional state for sprint creation
+  const [isCreateSprintDialogOpen, setIsCreateSprintDialogOpen] = useState(false)
 
   // Initial data loading
   useEffect(() => {
@@ -423,6 +429,17 @@ export default function TasksPage() {
     }
   }
 
+  // Handle sprint creation
+  const handleSprintCreated = async (sprint: Sprint) => {
+    setSprints(prev => [sprint, ...prev])
+    setSelectedSprintId(sprint.id)
+    setActiveSprint(sprint)
+    router.push(
+      `/tasks?view=${view}${selectedProjectId ? `&projectId=${selectedProjectId}` : ''}${selectedBoardId ? `&boardId=${selectedBoardId}` : ''}&sprintId=${sprint.id}`, 
+      { scroll: false }
+    )
+  }
+
   // Loading state
   if (loading && !projects.length) {
     return (
@@ -486,7 +503,9 @@ export default function TasksPage() {
             </SelectContent>
           </Select>
         </div>
-        {(view === 'board' || view === 'backlog') && selectedBoardId && sprints.length > 0 && (
+        {(view === 'board' || view === 'backlog') && selectedBoardId && (
+          <>
+            {sprints.length > 0 ? (
           <div className="flex-1 min-w-[200px]">
             <Label htmlFor="sprint-select">Sprint</Label>
             <Select value={selectedSprintId || ""} onValueChange={handleSprintChange} disabled={!sprints.length}>
@@ -498,14 +517,67 @@ export default function TasksPage() {
               </SelectContent>
             </Select>
           </div>
+            ) : (
+              <div className="flex-1 min-w-[200px]">
+                <Label>Sprint</Label>
+                <div className="flex items-center h-10 mt-2">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => setIsCreateSprintDialogOpen(true)}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create Sprint
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Sprint Header (Only shown in Board view) */}
-      {view === 'board' && selectedSprintId && (
+      {view === 'board' && selectedBoardId && (
         <SprintHeader 
           sprint={activeSprint} 
           stories={sprintStories}
+          projectId={selectedProjectId || ''}
+          boardId={selectedBoardId}
+          onStartSprint={async () => {
+            if (!activeSprint) return
+            try {
+              const updatedSprint = await startSprint(activeSprint.id, {
+                goal: activeSprint.goal || 'Complete sprint goals',
+                endDate: activeSprint.endDate
+              })
+              
+              setActiveSprint(updatedSprint)
+              setSprints(prev => prev.map(s => s.id === updatedSprint.id ? updatedSprint : s))
+            } catch (error) {
+              console.error('Failed to start sprint:', error)
+              setError('Failed to start sprint. Please try again.')
+            }
+          }}
+          onCompleteSprint={async () => {
+            if (!activeSprint) return
+            try {
+              const updatedSprint = await completeSprint(activeSprint.id, {
+                moveUnfinishedToBacklog: true
+              })
+              
+              setActiveSprint(updatedSprint)
+              setSprints(prev => prev.map(s => s.id === updatedSprint.id ? updatedSprint : s))
+              
+              // Refresh project data to update backlog with moved stories
+              if (selectedProjectId) {
+                await refreshProjectData()
+              }
+            } catch (error) {
+              console.error('Failed to complete sprint:', error)
+              setError('Failed to complete sprint. Please try again.')
+            }
+          }}
+          onSprintCreated={handleSprintCreated}
         />
       )}
 
@@ -582,13 +654,15 @@ export default function TasksPage() {
                 <BacklogView 
                   projectId={selectedProjectId} 
                   epics={epics} 
-                  stories={projectStories.filter(s => !s.sprintId || s.status === 'Backlog')}
+                  stories={projectStories.filter(s => !s.sprintId)}
                   sprints={sprints} 
                   selectedSprintId={selectedSprintId}
                   users={allUsers}
                   onAssignStoryToSprint={handleAssignStoryToSprint}
                   onUpdateStoryStatus={handleUpdateStoryStatus}
                   onOpenCreateItemDialog={handleOpenCreateItemDialog}
+                  onSprintCreated={handleSprintCreated}
+                  boardId={selectedBoardId || undefined}
                 />
               ) : (
                 <div className="text-center py-10">
@@ -641,6 +715,17 @@ export default function TasksPage() {
         itemType={createItemType}
         initialDefaults={createItemDefaults}
       />
+
+      {/* Create Sprint Dialog */}
+      {selectedProjectId && selectedBoardId && (
+        <CreateSprintDialog
+          open={isCreateSprintDialogOpen}
+          onOpenChange={setIsCreateSprintDialogOpen}
+          onSprintCreated={handleSprintCreated}
+          projectId={selectedProjectId}
+          boardId={selectedBoardId}
+        />
+      )}
     </div>
   )
 }

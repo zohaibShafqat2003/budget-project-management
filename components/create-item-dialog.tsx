@@ -68,7 +68,6 @@ export function CreateItemDialog({
   const [storyPriority, setStoryPriority] = useState<Story['priority']>("Medium")
   const [storyProjectId, setStoryProjectId] = useState<string | null>(projectId)
   const [storyEpicId, setStoryEpicId] = useState<string | null>(null)
-  const [storySprintId, setStorySprintId] = useState<string | null>(sprintId)
   const [storyIsReady, setStoryIsReady] = useState(false)
   const [storyAssigneeId, setStoryAssigneeId] = useState<string | null>(null)
   
@@ -113,10 +112,8 @@ export function CreateItemDialog({
         
         // Sprint defaults
         if (initialDefaults.sprintId) {
-          setStorySprintId(initialDefaults.sprintId)
           setStoryStatus("To Do") // When adding to sprint, set status to To Do instead of Backlog
         } else if (sprintId) {
-          setStorySprintId(sprintId)
           setStoryStatus("To Do")
         }
       }
@@ -516,11 +513,10 @@ export function CreateItemDialog({
                     <SelectValue />
                   </SelectTrigger>
                     <SelectContent>
-                    <SelectItem value="Highest">Highest</SelectItem>
-                    <SelectItem value="High">High</SelectItem>
-                    <SelectItem value="Medium">Medium (Default)</SelectItem>
                     <SelectItem value="Low">Low</SelectItem>
-                    <SelectItem value="Lowest">Lowest</SelectItem>
+                    <SelectItem value="Medium">Medium (Default)</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                    <SelectItem value="Critical">Critical</SelectItem>
                     </SelectContent>
                 </Select>
                 </div>
@@ -543,26 +539,6 @@ export function CreateItemDialog({
                   <SelectItem value="Done">Done</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="story-sprint">Sprint</Label>
-                <Select 
-                  value={storySprintId || ""} 
-                  onValueChange={setStorySprintId}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger id="story-sprint">
-                    <SelectValue placeholder="Select a sprint (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Not assigned to sprint</SelectItem>
-                    {/* In a real app, you would fetch sprints based on the selected project */}
-                    {sprintId && (
-                      <SelectItem value={sprintId}>Current Sprint</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
             </div>
 
               <div className="space-y-2">
@@ -730,11 +706,10 @@ export function CreateItemDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Highest">Highest</SelectItem>
-                    <SelectItem value="High">High</SelectItem>
-                    <SelectItem value="Medium">Medium (Default)</SelectItem>
                     <SelectItem value="Low">Low</SelectItem>
-                    <SelectItem value="Lowest">Lowest</SelectItem>
+                    <SelectItem value="Medium">Medium (Default)</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                    <SelectItem value="Critical">Critical</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -752,9 +727,8 @@ export function CreateItemDialog({
                   <SelectContent>
                     <SelectItem value="To Do">To Do</SelectItem>
                     <SelectItem value="In Progress">In Progress</SelectItem>
-                    <SelectItem value="In Review">In Review</SelectItem>
+                    <SelectItem value="Review">Review</SelectItem>
                     <SelectItem value="Done">Done</SelectItem>
-                    <SelectItem value="Blocked">Blocked</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +15,10 @@ import {
   AlertCircle,
   BookOpen,
   List as ListIcon,
-  Layers
+  Layers,
+  ChevronDown,
+  ChevronRight,
+  PlusCircle
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -29,12 +32,18 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
-  MouseSensor,
-  TouchSensor,
+  KeyboardSensor,
+  PointerSensor,
   useSensor,
   useSensors,
+  closestCenter
 } from "@dnd-kit/core"
-import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove
+} from "@dnd-kit/sortable"
 import { Story, Task, User, Epic, Sprint, updateStory, getStoriesByProject, getTasks, updateTask, assignTask } from "@/lib/db"
 import { CreatableItemType } from "@/components/create-item-dialog"
 import { SortableItem } from "./SortableItem"
@@ -61,16 +70,14 @@ type Column = {
 }
 
 // Status columns for Jira-style workflow
-const BOARD_STATUS_COLUMNS: Story['status'][] = ['To Do', 'In Progress', 'In Review', 'Done']
+const BOARD_STATUS_COLUMNS: Story['status'][] = ['To Do', 'In Progress', 'Review', 'Done']
 
 // Define valid status transitions
 const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-  'Backlog': ['To Do'],
-  'To Do': ['In Progress', 'Blocked'],
-  'In Progress': ['In Review', 'Blocked'],
-  'In Review': ['Done', 'Blocked'],
-  'Done': [],
-  'Blocked': ['To Do', 'In Progress', 'In Review']
+  'To Do': ['In Progress'],
+  'In Progress': ['Review'],
+  'Review': ['Done'],
+  'Done': ['To Do'] // Allow moving back to To Do if needed
 };
 
 // Helper functions for displaying priority and item type icons
@@ -122,21 +129,73 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
   const [error, setError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeItem, setActiveItem] = useState<BoardStory | null>(null)
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({})
 
-  // Set up sensors for drag and drop
+  // Set up drag sensors
   const sensors = useSensors(
-    useSensor(MouseSensor, {
+    useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
       },
     }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 200,
-        tolerance: 8,
-      },
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
     })
   )
+
+  // Toggle task expansion
+  const toggleTasks = (storyId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedTasks(prev => ({
+      ...prev,
+      [storyId]: !prev[storyId]
+    }));
+  }
+
+  // Helper function to refresh board data
+  const refreshBoardData = async () => {
+    if (!projectId || !sprintId) return;
+    
+    try {
+      // Fetch stories in the sprint
+      const storiesInSprint = await getStoriesByProject(projectId, { sprintId })
+      const storiesWithTasks: BoardStory[] = []
+
+      // Fetch tasks for each story
+      for (const story of storiesInSprint) {
+        const tasksForStory = await getTasks({ projectId, storyId: story.id })
+        storiesWithTasks.push({ ...story, tasks: tasksForStory })
+      }
+
+      // Group stories by status
+      const storiesByStatus = storiesWithTasks.reduce((acc, story) => {
+        const status = story.status
+        if (!acc[status]) {
+          acc[status] = []
+        }
+        acc[status].push(story)
+        return acc
+      }, {} as Record<Story['status'], BoardStory[]>)
+
+      // Create columns for the board
+      const newColumns: Column[] = BOARD_STATUS_COLUMNS.map(statusKey => ({
+        id: statusKey,
+        title: statusKey.replace(/([A-Z])/g, ' $1').trim(),
+        stories: storiesByStatus[statusKey] || [],
+      }))
+      
+      setColumns(newColumns)
+    } catch (err) {
+      console.error("Failed to refresh board data:", err)
+      setError(`Failed to refresh board. ${err instanceof Error ? err.message : ''}`)
+    }
+  }
+
+  // Helper function to clean up drag state
+  const cleanupDrag = () => {
+    setActiveId(null)
+    setActiveItem(null)
+  }
 
   // Fetch stories and tasks for the sprint
   useEffect(() => {
@@ -210,8 +269,8 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
     if (!over) return cleanupDrag();
 
     // If dropped onto a column:
-    if (BOARD_STATUS_COLUMNS.includes(over.id as string)) {
-      const newStatus = over.id as string;
+    if (BOARD_STATUS_COLUMNS.includes(over.id as Story['status'])) {
+      const newStatus = over.id as Story['status'];
       let storyToMove: BoardStory | undefined;
       
       // Find the story being moved
@@ -232,12 +291,6 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
         }
 
         try {
-          // Check for blockers if moving to In Progress
-          if (newStatus === 'In Progress' && storyToMove.blocked) {
-            alert('Cannot move to In Progress: there are unresolved blockers');
-            return cleanupDrag();
-          }
-
           await updateStory(projectId, storyToMove.id, { status: newStatus })
           await refreshBoardData();
         } catch (e: any) {
@@ -252,7 +305,7 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
       const newStoryId = over.id as string;
       const taskIdToMove = active.id as string;
       try {
-        await updateTask(taskIdToMove, { storyId: newStoryId });
+        await updateTask(projectId, taskIdToMove, { storyId: newStoryId });
         await refreshBoardData();
       } catch (e: any) {
         alert(e.message || 'Unable to move task. Reverting.');
@@ -263,7 +316,7 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
     cleanupDrag();
   };
 
-  // Handle task status change - new function
+  // Handle task status change
   const handleTaskStatusChange = async (taskId: string, newStatus: Task['status']) => {
     // Find the task and its current status
     let taskToUpdate: Task | null = null
@@ -301,7 +354,7 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
 
     try {
       // Update the task status in the backend
-      await updateTask(taskId, { status: newStatus })
+      await updateTask(projectId, taskId, { status: newStatus })
     } catch (err) {
       console.error(`Failed to update task status to ${newStatus}:`, err)
       // Revert to original state on error
@@ -346,7 +399,8 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
   // Render a story card
   const renderStoryCard = (story: BoardStory) => {
     const priorityInfo = getPriorityDisplay(story.priority)
-    const storyAssignee = story.assigneeId ? null : null // Placeholder, you need to fetch users or pass them as props
+    const storyAssignee = story.assigneeId ? users.find(u => u.id === story.assigneeId) : null
+    const showTasks = expandedTasks[story.id] || false
 
     return (
       <Card className="mb-3 shadow-sm">
@@ -393,12 +447,72 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
           {story.tasks && story.tasks.length > 0 && (
             <div className="mt-2">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Tasks: {story.tasks.filter(t => t.status === 'Done').length}/{story.tasks.length}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-xs"
+                  onClick={(e) => toggleTasks(story.id, e)}
+                >
+                  <span className="flex items-center">
+                    {showTasks ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
+                    Tasks: {story.tasks.filter(t => t.status === 'Done').length}/{story.tasks.length}
+                  </span>
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-5 w-5 rounded-full" 
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onOpenCreateItemDialog('Task', { projectId, storyId: story.id, sprintId })
+                  }}
+                >
+                  <PlusCircle className="h-3.5 w-3.5" />
+                </Button>
               </div>
               <Progress 
                 value={(story.tasks.filter(t => t.status === 'Done').length / story.tasks.length) * 100} 
                 className="h-1.5 mt-1" 
               />
+              
+              {/* Task list */}
+              {showTasks && (
+                <div className="mt-2 border-t pt-2 space-y-1.5">
+                  {story.tasks.map(task => {
+                    const taskPriority = getPriorityDisplay(task.priority as any);
+                    const assignee = task.assigneeId ? users.find(u => u.id === task.assigneeId) : null;
+                    
+                    return (
+                      <div key={task.id} className="flex items-center justify-between bg-muted/30 rounded px-2 py-1.5 text-xs">
+                        <div className="flex items-center">
+                          <div className={`w-1.5 h-1.5 rounded-full ${
+                            task.status === 'Done' ? 'bg-green-500' : 
+                            task.status === 'In Progress' ? 'bg-blue-500' : 
+                            task.status === 'To Do' ? 'bg-gray-400' :
+                            'bg-purple-500'
+                          } mr-2`}></div>
+                          <span className="truncate max-w-[150px]">{task.title}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Badge 
+                            variant="outline" 
+                            className={`h-4 px-1 py-0 text-[10px] text-white ${taskPriority.color} border-transparent`}
+                          >
+                            {taskPriority.name}
+                          </Badge>
+                          {assignee && (
+                            <Avatar className="h-4 w-4">
+                              <AvatarFallback className="text-[8px]">
+                                {`${assignee.firstName[0]}${assignee.lastName[0]}`}
+                              </AvatarFallback>
+                            </Avatar>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -438,13 +552,6 @@ export function BoardView({ projectId, boardId, sprintId, users, onOpenCreateIte
             <h3 className="text-lg font-semibold">Sprint Board</h3>
             <p className="text-sm text-muted-foreground">Drag and drop stories between columns to update their status</p>
           </div>
-          <Button 
-            onClick={() => onOpenCreateItemDialog('Story', { projectId, sprintId })}
-            size="sm"
-            className="mt-2 md:mt-0"
-          >
-            Add Story to Sprint
-          </Button>
         </div>
 
         <DndContext

@@ -93,6 +93,13 @@ exports.createProject = async (req, res, next) => {
     // Add owner as a member
     if (project) {
       await project.addMember(req.user.id);
+      
+      // Create a default board for this project
+      const Board = require('../models').Board;
+      await Board.create({
+        name: `${project.name} Board`,
+        projectId: project.id
+      });
     }
     
     return res.status(201).json({

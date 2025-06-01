@@ -3,7 +3,7 @@ const logger = require('../config/logger');
 
 // Parse environment variables for rate limits
 const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000; // Default 15 minutes
-const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100; // Default 100 requests
+const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 1000; // Default 100 requests
 
 // For development, allow more auth requests
 const isDevelopment = process.env.NODE_ENV === 'development';

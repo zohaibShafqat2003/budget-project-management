@@ -17,7 +17,9 @@ import {
   List as ListIcon,
   Layers,
   PlusCircle,
-  ChevronRight
+  ChevronRight,
+  Calendar,
+  ChevronDown
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -33,6 +35,8 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Story, Task, Epic, Sprint, User } from "@/lib/db"
 import { CreatableItemType } from "@/components/create-item-dialog"
+import { CreateSprintDialog } from "@/components/create-sprint-dialog"
+import { getTasks } from "@/lib/db"
 
 interface BacklogViewProps {
   projectId: string
@@ -45,6 +49,8 @@ interface BacklogViewProps {
   onUpdateStoryStatus: (storyId: string, status: Story['status']) => Promise<void>
   onOpenCreateItemDialog: (type: CreatableItemType, defaults: { epicId?: string, projectId?: string, storyId?: string }) => void
   onDeleteEpic?: (epicId: string) => Promise<void>
+  onSprintCreated?: (sprint: Sprint) => void
+  boardId?: string
 }
 
 // Define valid status and priority options
@@ -102,10 +108,13 @@ export function BacklogView({
   onAssignStoryToSprint,
   onUpdateStoryStatus,
   onOpenCreateItemDialog,
-  onDeleteEpic
+  onDeleteEpic,
+  onSprintCreated,
+  boardId
 }: BacklogViewProps) {
   const [sortBy, setSortBy] = useState<"priority" | "id">("priority")
   const [expandedEpics, setExpandedEpics] = useState<string[]>([])
+  const [isCreateSprintDialogOpen, setIsCreateSprintDialogOpen] = useState(false)
   
   // Filter stories without epic and sprint
   const storiesWithoutEpic = stories.filter((story) => !story.epicId && !story.sprintId);
@@ -135,10 +144,42 @@ export function BacklogView({
     }
   }
 
+  // Add state for expanded tasks and tasks data
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({})
+  const [storyTasks, setStoryTasks] = useState<Record<string, Task[]>>({})
+  const [isLoadingTasks, setIsLoadingTasks] = useState<Record<string, boolean>>({})
+
+  // Load tasks for a story when expanded
+  const loadTasksForStory = async (storyId: string) => {
+    if (storyTasks[storyId]) return; // Already loaded
+    
+    setIsLoadingTasks(prev => ({ ...prev, [storyId]: true }))
+    
+    try {
+      const tasks = await getTasks({ projectId, storyId })
+      setStoryTasks(prev => ({ ...prev, [storyId]: tasks }))
+    } catch (error) {
+      console.error("Failed to load tasks for story:", error)
+    } finally {
+      setIsLoadingTasks(prev => ({ ...prev, [storyId]: false }))
+    }
+  }
+  
+  // Toggle task expansion
+  const toggleTasks = (storyId: string) => {
+    const newState = !expandedTasks[storyId]
+    setExpandedTasks(prev => ({ ...prev, [storyId]: newState }))
+    
+    if (newState) {
+      loadTasksForStory(storyId)
+    }
+  }
+
   // Render a story card
   const renderStoryCard = (story: Story) => {
     const priorityInfo = getPriorityDisplay(story.priority)
     const assignee = story.assigneeId ? users.find(u => u.id === story.assigneeId) : null
+    const hasExpandedTasks = expandedTasks[story.id] || false
 
     return (
       <Card key={story.id} className="mb-2 shadow-sm hover:shadow-md transition-shadow">
@@ -174,7 +215,7 @@ export function BacklogView({
                     In Review
                   </Badge>
                 )}
-                {activeSprints.length > 0 && (
+                {activeSprints.length > 0 ? (
                   <DropdownMenuSub>
                     <DropdownMenuSubTrigger>Assign to Sprint</DropdownMenuSubTrigger>
                     <DropdownMenuPortal>
@@ -188,9 +229,25 @@ export function BacklogView({
                             {sprint.name} ({sprint.status})
                           </DropdownMenuItem>
                         ))}
+                        {boardId && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => setIsCreateSprintDialogOpen(true)}>
+                              <PlusCircle className="h-4 w-4 mr-2" />
+                              Create New Sprint
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuSubContent>
                     </DropdownMenuPortal>
                   </DropdownMenuSub>
+                ) : (
+                  boardId && (
+                    <DropdownMenuItem onClick={() => setIsCreateSprintDialogOpen(true)}>
+                      <PlusCircle className="h-4 w-4 mr-2" />
+                      Create Sprint & Assign
+                    </DropdownMenuItem>
+                  )
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onOpenCreateItemDialog('Task', { projectId, storyId: story.id })}>
@@ -219,7 +276,22 @@ export function BacklogView({
               {story.points || 0} points
             </div>
           </div>
-          <div className="flex items-center justify-end mt-2">
+          <div className="flex items-center justify-between mt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-1.5 text-xs"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleTasks(story.id)
+              }}
+            >
+              <span className="flex items-center">
+                {hasExpandedTasks ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
+                Tasks
+              </span>
+            </Button>
+            
             {assignee && (
               <Avatar className="h-6 w-6">
                 <AvatarFallback className="text-xs">
@@ -228,8 +300,88 @@ export function BacklogView({
               </Avatar>
             )}
           </div>
+          
+          {/* Task list (when expanded) */}
+          {renderTaskList(story.id)}
         </CardContent>
       </Card>
+    )
+  }
+
+  // Add task rendering
+  const renderTaskList = (storyId: string) => {
+    if (!expandedTasks[storyId]) return null;
+    
+    const tasks = storyTasks[storyId] || []
+    const isLoading = isLoadingTasks[storyId]
+    
+    if (isLoading) {
+      return (
+        <div className="py-2 px-1">
+          <div className="animate-pulse h-4 bg-muted rounded w-3/4 mb-2"></div>
+          <div className="animate-pulse h-4 bg-muted rounded w-1/2"></div>
+        </div>
+      )
+    }
+    
+    if (tasks.length === 0) {
+      return (
+        <div className="py-2 px-1 text-xs text-muted-foreground">
+          No tasks yet
+        </div>
+      )
+    }
+    
+    return (
+      <div className="mt-2 border-t pt-2 space-y-1.5">
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-medium">Tasks ({tasks.length})</span>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-5 w-5 rounded-full" 
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenCreateItemDialog('Task', { projectId, storyId })
+            }}
+          >
+            <PlusCircle className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        {tasks.map(task => {
+          const taskPriority = getPriorityDisplay(task.priority as any)
+          const assignee = task.assigneeId ? users.find(u => u.id === task.assigneeId) : null
+          
+          return (
+            <div key={task.id} className="flex items-center justify-between bg-muted/30 rounded px-2 py-1.5 text-xs">
+              <div className="flex items-center">
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  task.status === 'Done' ? 'bg-green-500' : 
+                  task.status === 'In Progress' ? 'bg-blue-500' : 
+                  task.status === 'To Do' ? 'bg-gray-400' :
+                  'bg-purple-500'
+                } mr-2`}></div>
+                <span className="truncate max-w-[150px]">{task.title}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Badge 
+                  variant="outline" 
+                  className={`h-4 px-1 py-0 text-[10px] text-white ${taskPriority.color} border-transparent`}
+                >
+                  {taskPriority.name}
+                </Badge>
+                {assignee && (
+                  <Avatar className="h-4 w-4">
+                    <AvatarFallback className="text-[8px]">
+                      {`${assignee.firstName[0]}${assignee.lastName[0]}`}
+                    </AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     )
   }
 
@@ -256,6 +408,15 @@ export function BacklogView({
           >
             Sort by: {sortBy === "priority" ? "Priority" : "ID"}
           </Button>
+          {boardId && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsCreateSprintDialogOpen(true)}
+            >
+              <Calendar className="mr-2 h-4 w-4" /> Create Sprint
+            </Button>
+          )}
           <Button 
             variant="default" 
             size="sm" 
@@ -306,7 +467,7 @@ export function BacklogView({
           >
             {epics.map(epic => {
               const epicProgress = getEpicProgress(epic.id)
-              const epicStories = stories.filter(s => s.epicId === epic.id && (!s.sprintId || s.status === 'Backlog'))
+              const epicStories = stories.filter(s => s.epicId === epic.id && !s.sprintId)
               
               return (
                 <AccordionItem 
@@ -399,6 +560,21 @@ export function BacklogView({
           {/* ... other menu items ... */}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Sprint Creation Dialog */}
+      {boardId && projectId && (
+        <CreateSprintDialog
+          open={isCreateSprintDialogOpen}
+          onOpenChange={setIsCreateSprintDialogOpen}
+          onSprintCreated={(sprint) => {
+            if (onSprintCreated) onSprintCreated(sprint);
+            // Close the dialog
+            setIsCreateSprintDialogOpen(false);
+          }}
+          projectId={projectId}
+          boardId={boardId}
+        />
+      )}
     </div>
   )
 } 

@@ -14,16 +14,29 @@ import {
   HelpCircle
 } from "lucide-react"
 import { Sprint, Story } from "@/lib/db"
+import { CreateSprintDialog } from "@/components/create-sprint-dialog"
 
 interface SprintHeaderProps {
   sprint: Sprint | null
   stories: Story[]
+  projectId: string
+  boardId: string
   onStartSprint?: () => Promise<void>
   onCompleteSprint?: () => Promise<void>
+  onSprintCreated?: (sprint: Sprint) => void
 }
 
-export function SprintHeader({ sprint, stories, onStartSprint, onCompleteSprint }: SprintHeaderProps) {
+export function SprintHeader({ 
+  sprint, 
+  stories, 
+  projectId,
+  boardId,
+  onStartSprint, 
+  onCompleteSprint,
+  onSprintCreated 
+}: SprintHeaderProps) {
   const [progress, setProgress] = useState(0)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   useEffect(() => {
     if (stories.length === 0) {
@@ -38,16 +51,31 @@ export function SprintHeader({ sprint, stories, onStartSprint, onCompleteSprint 
 
   if (!sprint) {
     return (
-      <Card className="mb-6">
-        <CardContent className="p-4 text-center">
-          <HelpCircle className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
-          <p className="text-muted-foreground">No active sprint selected.</p>
-          <Button variant="outline" size="sm" className="mt-2">
-            <Play className="h-4 w-4 mr-2" />
-            Create Sprint
-          </Button>
-        </CardContent>
-      </Card>
+      <>
+        <Card className="mb-6">
+          <CardContent className="p-4 text-center">
+            <HelpCircle className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-muted-foreground">No active sprint selected.</p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-2"
+              onClick={() => setIsCreateDialogOpen(true)}
+            >
+              <Play className="h-4 w-4 mr-2" />
+              Create Sprint
+            </Button>
+          </CardContent>
+        </Card>
+
+        <CreateSprintDialog
+          open={isCreateDialogOpen}
+          onOpenChange={setIsCreateDialogOpen}
+          onSprintCreated={onSprintCreated || (() => {})}
+          projectId={projectId}
+          boardId={boardId}
+        />
+      </>
     )
   }
 
@@ -98,36 +126,28 @@ export function SprintHeader({ sprint, stories, onStartSprint, onCompleteSprint 
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4 mr-1" />
-                <span>Timeline</span>
-              </div>
-              <span className="text-sm">
-                {formattedStartDate} - {formattedEndDate}
-              </span>
-            </div>
-            <Progress value={timelineProgress} className="h-2" />
-            <div className="flex justify-between text-xs mt-1">
-              <span>{totalDays} days total</span>
-              <span className="text-muted-foreground">{remainingDays} days remaining</span>
-            </div>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Calendar className="h-4 w-4" />
+            <span>{formattedStartDate} - {formattedEndDate}</span>
+            <span>•</span>
+            <span>{remainingDays} days remaining</span>
           </div>
-          
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-muted-foreground">Sprint Progress</span>
-              <span className="text-sm font-medium">{progress}%</span>
+
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Sprint Progress</span>
+              <span>{progress}%</span>
             </div>
-            <Progress value={progress} className="h-2" />
-            <div className="flex justify-between text-xs mt-1">
-              <span>{stories.filter(s => s.status === 'Done').length}/{stories.length} stories completed</span>
-              <span className="text-muted-foreground">
-                {stories.filter(s => s.status !== 'Done' && s.status !== 'Blocked').length} in progress
-              </span>
+            <Progress value={progress} />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Timeline</span>
+              <span>{timelineProgress}%</span>
             </div>
+            <Progress value={timelineProgress} />
           </div>
         </div>
       </CardContent>

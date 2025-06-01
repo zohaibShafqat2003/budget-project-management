@@ -5,10 +5,10 @@ const { Op } = require('sequelize');
 // Define allowed status transitions
 const ALLOWED_STATUS_TRANSITIONS = {
   'Created': ['To Do'],
-  'To Do': ['In Progress', 'Blocked'],
-  'In Progress': ['In Review', 'Blocked'],
+  'To Do': ['In Progress', 'Blocked', 'Done'],
+  'In Progress': ['In Review', 'Blocked', 'Done'],
   'In Review': ['Done', 'Blocked'],
-  'Done': [],
+  'Done': ['In Progress', 'Blocked'],
   'Blocked': ['To Do', 'In Progress', 'In Review']
 };
 
@@ -18,18 +18,27 @@ async function hasUnresolvedBlocker(taskId) {
     where: {
       targetTaskId: taskId,
       type: 'blocks'
-    },
-    include: [{
-      model: Task,
-      as: 'sourceTask',
-      where: {
-        status: {
-          [Op.notIn]: ['Done', 'Closed']
-        }
-      }
-    }]
+    }
   });
-  return blockers.length > 0;
+  
+  if (blockers.length === 0) {
+    return false;
+  }
+  
+  // Get the source tasks that are blocking
+  const sourceTaskIds = blockers.map(blocker => blocker.sourceTaskId);
+  
+  // Check if any of the blocking tasks are not done
+  const blockingTasks = await Task.findAll({
+    where: {
+      id: sourceTaskIds,
+      status: {
+        [Op.notIn]: ['Done', 'Closed']
+      }
+    }
+  });
+  
+  return blockingTasks.length > 0;
 }
 
 // Get all tasks

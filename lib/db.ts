@@ -558,21 +558,45 @@ export async function createTask(taskData: Partial<Task>): Promise<Task> {
   }
 }
 
-export async function updateTask(id: string, taskData: Partial<Task>): Promise<Task> {
-  try {
-    return await fetchApi(`tasks/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(taskData),
-    });
-  } catch (error) {
-    console.error('Error updating task, using mock data:', error);
-    const taskIndex = mockTasks.findIndex(t => t.id === id);
-    if (taskIndex >= 0) {
-      mockTasks[taskIndex] = { ...mockTasks[taskIndex], ...taskData, updatedAt: new Date() };
-      return mockTasks[taskIndex];
+export async function updateTask(
+  projectId: string,
+  taskId: string,
+  data: Partial<{
+    status: string;
+    priority: string;
+    assigneeId: string;
+    title: string;
+    description: string;
+    estimatedHours: number;
+    actualHours: number;
+    dueDate: string | Date;
+    startDate: string | Date;
+    [key: string]: any; // Add index signature to allow string indexing
+  }> = {} // Default to empty object to prevent null/undefined
+): Promise<Task> {
+  // Remove null/undefined fields
+  const cleanData: Record<string, any> = {};
+  
+  // Ensure data is not null or undefined
+  const safeData = data || {};
+  
+  // Use Object.entries to avoid TypeScript errors with indexing
+  Object.entries(safeData).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      cleanData[key] = value;
     }
-    throw new Error(`Task with id ${id} not found`);
+  });
+  
+  // Only make API call if there are fields to update
+  if (Object.keys(cleanData).length === 0) {
+    throw new Error('No valid fields to update');
   }
+
+  return fetchApi(`tasks/${taskId}`, {
+      method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cleanData),
+    });
 }
 
 export async function deleteTask(id: string): Promise<void> {
@@ -910,6 +934,38 @@ export async function getSprintsByProject(projectId: string): Promise<Sprint[]> 
   }
 }
 
+// Start a sprint
+export async function startSprint(sprintId: string, data: { goal: string, endDate: string | Date }): Promise<Sprint> {
+  try {
+    return await fetchApi(`sprints/${sprintId}/start`, {
+      method: 'POST',
+      body: JSON.stringify({
+        goal: data.goal,
+        endDate: typeof data.endDate === 'string' ? data.endDate : data.endDate.toISOString(),
+      }),
+    });
+  } catch (error) {
+    console.error('Error starting sprint:', error);
+    throw error;
+  }
+}
+
+// Complete a sprint
+export async function completeSprint(
+  sprintId: string, 
+  data: { moveUnfinishedToBacklog: boolean, retrospectiveNotes?: string }
+): Promise<Sprint> {
+  try {
+    return await fetchApi(`sprints/${sprintId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  } catch (error) {
+    console.error('Error completing sprint:', error);
+    throw error;
+  }
+}
+
 // Epic API functions
 export async function createEpic(
   projectId: string, 
@@ -1068,14 +1124,14 @@ export async function updateStory(
   storyId: string, 
   storyData: Partial<Omit<Story, 'id' | 'projectId' | 'epicId' | 'createdAt' | 'updatedAt'>> & { epicId?: string } // Allow updating epicId too
 ): Promise<Story> {
-  return fetchApi(`/stories/${storyId}`, {
+  return fetchApi(`stories/${storyId}`, {
     method: 'PUT',
     body: JSON.stringify(storyData),
   });
 }
 
 export async function deleteStory(projectId: string, storyId: string): Promise<void> {
-  await fetchApi(`/stories/${storyId}`, {
+  await fetchApi(`stories/${storyId}`, {
     method: 'DELETE',
   });
 }

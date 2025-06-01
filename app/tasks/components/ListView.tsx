@@ -225,7 +225,7 @@ export function ListView({ projectId, items, users, onOpenCreateItemDialog, onDe
       const { itemType } = getItemTypeInfo(item)
       
       if (itemType === 'Task' && 'id' in item) {
-        await updateTask(item.id, { status: newStatus as Task['status'] })
+        await updateTask(projectId, item.id, { status: newStatus as Task['status'] })
       } else if (itemType === 'Story' && 'id' in item && projectId) {
         await updateStory(projectId, item.id, { status: newStatus as Story['status'] })
       } else if (itemType === 'Epic') {
@@ -248,7 +248,7 @@ export function ListView({ projectId, items, users, onOpenCreateItemDialog, onDe
       const { itemType } = getItemTypeInfo(item)
       
       if (itemType === 'Task' && 'id' in item) {
-        await updateTask(item.id, { priority: newPriority as Task['priority'] })
+        await updateTask(projectId, item.id, { priority: newPriority as Task['priority'] })
       } else if (itemType === 'Story' && 'id' in item && projectId) {
         await updateStory(projectId, item.id, { priority: newPriority as Story['priority'] })
       }
