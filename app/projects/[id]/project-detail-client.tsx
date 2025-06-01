@@ -46,6 +46,8 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AttachmentList } from "@/components/attachment-list"
+import { toast } from "sonner"
 
 type ProjectDetailClientProps = {
   id: string;
@@ -61,7 +63,7 @@ export function ProjectDetailClient({ id }: ProjectDetailClientProps) {
   const [newTeamMembers, setNewTeamMembers] = useState<string[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [availableUsers, setAvailableUsers] = useState<User[]>([])
-  const [editStatus, setEditStatus] = useState<string | null>(null)
+  const [editStatus, setEditStatus] = useState<Project['status'] | null>(null)
   const [showTeamDialog, setShowTeamDialog] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   
@@ -257,6 +259,12 @@ export function ProjectDetailClient({ id }: ProjectDetailClientProps) {
               Manage Team
             </Link>
           </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/projects/${projectId}/attachments`}>
+              <ClipboardList className="mr-2 h-4 w-4" />
+              Attachments
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -380,7 +388,7 @@ export function ProjectDetailClient({ id }: ProjectDetailClientProps) {
                         <div className="py-6">
                           <Select
                             value={editStatus || project.status}
-                            onValueChange={setEditStatus}
+                            onValueChange={(value: Project['status']) => setEditStatus(value)}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Select status" />
@@ -418,10 +426,11 @@ export function ProjectDetailClient({ id }: ProjectDetailClientProps) {
           </Card>
 
           <Tabs defaultValue="details">
-            <TabsList className="grid grid-cols-2 md:grid-cols-3">
+            <TabsList className="grid grid-cols-2 md:grid-cols-4">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="tasks">Tasks</TabsTrigger>
               <TabsTrigger value="budget">Budget</TabsTrigger>
+              <TabsTrigger value="attachments">Attachments</TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="space-y-4 pt-4">
               <Card>
@@ -474,6 +483,22 @@ export function ProjectDetailClient({ id }: ProjectDetailClientProps) {
                   <div className="text-center p-4 text-muted-foreground">
                     No budget entries have been created for this project.
                   </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="attachments" className="space-y-4 pt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Project Attachments</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <AttachmentList
+                    entityType="projects"
+                    entityId={project.id}
+                    onUploadSuccess={() => {
+                      toast.success("File uploaded successfully");
+                    }}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>

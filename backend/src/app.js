@@ -30,6 +30,7 @@ const commentRoutes = require('./routes/comment.routes');
 const attachmentRoutes = require('./routes/attachment.routes');
 const labelRoutes = require('./routes/label.routes');
 const searchRoutes = require('./routes/search.routes');
+const reportRoutes = require('./routes/report.routes');
 
 // Create Express app
 const app = express();
@@ -92,9 +93,10 @@ app.use('/api', sprintRoutes);
 
 // These routes also have resource-specific endpoints
 app.use('/api/comments', commentRoutes);
-app.use('/api/attachments', attachmentRoutes);
+app.use('/api', attachmentRoutes);
 app.use('/api/labels', labelRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Error handling
 app.use(errorHandler);

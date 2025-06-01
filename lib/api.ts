@@ -501,4 +501,27 @@ export const expenseApi = {
   reject: async (expenseId: string) => {
     return apiRequest(`/expenses/${expenseId}/reject`, 'POST');
   }
+};
+
+// Reports API services
+export const reportApi = {
+  getProjectSummary: async () => {
+    return apiRequest('/reports/projects');
+  },
+  
+  getBudgetAnalysis: async () => {
+    return apiRequest('/reports/budget');
+  },
+  
+  getTeamPerformance: async () => {
+    return apiRequest('/reports/team');
+  },
+  
+  getAIInsights: async () => {
+    return apiRequest('/reports/ai-insights');
+  },
+  
+  exportReport: async (data: { reportType: string; format: string }) => {
+    return apiRequest('/reports/export', 'POST', data);
+  }
 }; 

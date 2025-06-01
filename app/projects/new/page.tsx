@@ -7,14 +7,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CalendarIcon, Loader2, Plus } from "lucide-react"
+import { CalendarIcon, Loader2, Plus, Upload, Trash2 } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createProject, getClients, createClient, Project, Client } from "@/lib/db"
+import { uploadAttachment } from "@/lib/api/attachments"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Dialog,
@@ -35,6 +36,10 @@ export default function NewProjectPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isNewClientDialogOpen, setIsNewClientDialogOpen] = useState(false)
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [fileDescriptions, setFileDescriptions] = useState<string[]>([])
+  const [uploadingFiles, setUploadingFiles] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [newClientData, setNewClientData] = useState({
     name: "",
     email: "",
@@ -45,9 +50,9 @@ export default function NewProjectPage() {
     name: "",
     clientId: "",
     nameOfClient: "",
-    type: "Scrum",
-    status: "Not Started",
-    priority: "Medium",
+    type: "Scrum" as "Scrum" | "Kanban",
+    status: "Not Started" as "Not Started" | "Active" | "In Progress" | "Review" | "Completed" | "Archived" | "On Hold",
+    priority: "Medium" as "Low" | "Medium" | "High" | "Critical",
     totalBudget: "",
     approxValueOfServices: "",
     narrativeDescription: "",
@@ -113,9 +118,8 @@ export default function NewProjectPage() {
     setError(null)
 
     try {
-      // Handle the case where a client name is provided but no clientId
-      // This ensures the name is sent to the backend even without a formal client relationship
-      let projectDataToSend: Partial<Project> = {
+      // Convert form data to appropriate types
+      const projectData: any = {
         ...formData,
         totalBudget: formData.totalBudget ? parseFloat(formData.totalBudget) : 0,
         approxValueOfServices: formData.approxValueOfServices 
@@ -124,20 +128,42 @@ export default function NewProjectPage() {
       }
 
       if (startDate) {
-        projectDataToSend.startDate = startDate
+        projectData.startDate = startDate
       }
 
       if (endDate) {
-        projectDataToSend.completionDate = endDate
+        projectData.completionDate = endDate
       }
 
       // If no clientId is selected but nameOfClient is provided, use that
       if (!formData.clientId && formData.nameOfClient) {
-        projectDataToSend.nameOfClient = formData.nameOfClient
-        delete projectDataToSend.clientId // Ensure we don't send an empty clientId
+        projectData.nameOfClient = formData.nameOfClient
+        delete projectData.clientId // Since we're using any type, we can use delete
       }
 
-      const project = await createProject(projectDataToSend)
+      const project = await createProject(projectData)
+      
+      // Upload any attachments
+      if (attachments.length > 0) {
+        setUploadingFiles(true)
+        try {
+          for (let i = 0; i < attachments.length; i++) {
+            await uploadAttachment(
+              'projects',
+              project.id,
+              attachments[i],
+              fileDescriptions[i] || '',
+              false
+            );
+          }
+        } catch (err: any) {
+          console.error("Error uploading attachments:", err);
+          // Continue with navigation even if attachments fail
+        } finally {
+          setUploadingFiles(false);
+        }
+      }
+      
       router.push('/projects')
     } catch (err: any) {
       console.error("Failed to create project:", err)
@@ -146,6 +172,29 @@ export default function NewProjectPage() {
       setLoading(false)
     }
   }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const newFiles = Array.from(files);
+      setAttachments(prev => [...prev, ...newFiles]);
+      setFileDescriptions(prev => [
+        ...prev,
+        ...newFiles.map(() => '')
+      ]);
+    }
+  };
+
+  const handleFileDescriptionChange = (index: number, description: string) => {
+    const newDescriptions = [...fileDescriptions];
+    newDescriptions[index] = description;
+    setFileDescriptions(newDescriptions);
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+    setFileDescriptions(prev => prev.filter((_, i) => i !== index));
+  };
 
   return (
     <div className="flex flex-col p-6 space-y-6 max-w-4xl mx-auto">
@@ -467,22 +516,102 @@ export default function NewProjectPage() {
                 onChange={handleInputChange}
               />
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" type="button" onClick={() => router.back()} disabled={loading}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
-                  </>
-                ) : "Create Project"}
-              </Button>
+        {/* Attachments Card */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Attachments</CardTitle>
+            <CardDescription>Add files and documents to this project</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Project Files</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Add Files
+                </Button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  multiple
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </div>
+
+              {attachments.length === 0 ? (
+                <div className="text-center py-8 border rounded-md border-dashed">
+                  <p className="text-muted-foreground">No files attached</p>
+                  <p className="text-sm text-muted-foreground">
+                    Click "Add Files" to attach documents to this project
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {attachments.map((file, index) => (
+                    <div key={index} className="flex flex-col space-y-2 border rounded-md p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-shrink-0 w-10 h-10 bg-primary/10 rounded-md flex items-center justify-center">
+                            <Upload className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium">{file.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(file.size / 1024).toFixed(2)} KB
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeAttachment(index)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                      <div>
+                        <Label htmlFor={`file-desc-${index}`} className="text-xs">Description</Label>
+                        <Input
+                          id={`file-desc-${index}`}
+                          placeholder="Add a description for this file"
+                          value={fileDescriptions[index]}
+                          onChange={(e) => handleFileDescriptionChange(index, e.target.value)}
+                          className="mt-1 text-sm"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
+
+        <div className="flex justify-end mt-6 space-x-2">
+          <Button variant="outline" type="button" onClick={() => router.back()}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={loading || uploadingFiles}>
+            {(loading || uploadingFiles) ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {loading ? "Creating..." : "Uploading Files..."}
+              </>
+            ) : (
+              "Create Project"
+            )}
+          </Button>
+        </div>
       </form>
     </div>
   )

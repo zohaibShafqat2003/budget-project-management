@@ -252,5 +252,7 @@ module.exports = {
   RefreshToken,
   Expense,
   // Export sync function
-  syncDatabase
+  syncDatabase,
+  // Export the sequelize instance for transactions
+  sequelize
 }; 
