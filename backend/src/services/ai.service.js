@@ -1,177 +1,313 @@
 const logger = require('../config/logger');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// Initialize the Gemini API
+const geminiApiKey = process.env.GEMINI_API_KEY;
+let genAI = null;
+
+// Initialize Gemini client if API key is available
+if (geminiApiKey) {
+  genAI = new GoogleGenerativeAI(geminiApiKey);
+  logger.info('Gemini AI service initialized successfully');
+} else {
+  logger.warn('Gemini AI service not initialized - API key missing');
+}
+
+// List available models (uncomment for debugging)
+// async function listModels() {
+//   if (!genAI) return [];
+//   try {
+//     const models = await genAI.listModels();
+//     logger.info('Available models:', models.map(m => m.name));
+//     return models;
+//   } catch (error) {
+//     logger.error('Error listing models:', error);
+//     return [];
+//   }
+// }
+// listModels();
 
 /**
  * Generate AI insights based on project data
- * @param {Array} projects - Array of project data
- * @returns {Object} AI-generated insights
+ * @param {Object} projectData - Project data to analyze
+ * @returns {Array} Array of insights
  */
-const generateAIInsights = async (projects = []) => {
+const generateAIInsights = async (projectData) => {
   try {
-    // In a real application, this would integrate with an AI service
-    // For this demo, we'll return predefined insights
-    
-    return {
-      projectRiskAssessment: [
-        {
-          projectName: "Marketing Campaign",
-          riskLevel: "High",
-          budgetOverrunProbability: 75,
-          timelineSlippageProbability: 40,
-          recommendation: "Implement weekly budget reviews and consider scope reduction."
-        },
-        {
-          projectName: "Website Redesign",
-          riskLevel: "Medium",
-          budgetOverrunProbability: 30,
-          timelineSlippageProbability: 30,
-          recommendation: "Allocate additional QA resources to mitigate potential delays."
-        },
-        {
-          projectName: "Mobile App Development",
-          riskLevel: "Low",
-          budgetOverrunProbability: 15,
-          timelineSlippageProbability: 20,
-          recommendation: "Monitor integration phase closely as risks may increase."
-        }
-      ],
-      performancePrediction: {
-        deadlineMeetingProjects: 4,
-        totalActiveProjects: 5,
-        projectedBudgetVariance: 5,
-        productivityIncrease: 8,
-        projectionsDetail: [
-          {
-            projectName: "Marketing Campaign",
-            timelineProjection: "1 week extension likely",
-            budgetProjection: "15% over budget"
-          },
-          {
-            projectName: "Website Redesign",
-            timelineProjection: "On schedule",
-            budgetProjection: "Within 5% of budget"
-          },
-          {
-            projectName: "Mobile App Development",
-            timelineProjection: "On schedule",
-            budgetProjection: "Within 3% of budget"
-          }
-        ]
-      },
-      strategicRecommendations: [
-        {
-          recommendation: "Accelerate E-commerce Platform start",
-          benefit: "Better resource distribution across team",
-          priority: "High"
-        },
-        {
-          recommendation: "Merge Brand Identity and Website Redesign aspects",
-          benefit: "Create synergies and reduce duplication",
-          priority: "Medium"
-        },
-        {
-          recommendation: "Implement agile approach for Marketing Campaign",
-          benefit: "Better budget control with weekly checkpoints",
-          priority: "High"
-        },
-        {
-          recommendation: "Invest in backend development upskilling",
-          benefit: "Address identified skill gap",
-          priority: "Medium"
-        }
-      ]
-    };
+        // If Gemini is not available, return fallback insights
+    if (!genAI) {
+      logger.debug('Using fallback AI insights generation');
+      return generateFallbackInsights(projectData);
+    }
+
+    // Format project data for the AI prompt
+    const prompt = formatProjectDataForPrompt(projectData);
+
+    // Get a model instance with the correct model name
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+    // Generate content
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Parse the response
+    return parseGeminiResponse(text);
   } catch (error) {
     logger.error('Error generating AI insights:', error);
-    throw new Error('Failed to generate AI insights');
+    return generateFallbackInsights(projectData);
   }
 };
 
 /**
- * Generate project performance predictions
- * @param {Object} project - Project data
- * @returns {Object} Performance predictions
+ * Format project data for AI prompt
+ * @param {Object} projectData - Project data to format
+ * @returns {String} Formatted prompt
  */
-const generateProjectPredictions = (project) => {
+const formatProjectDataForPrompt = (projectData) => {
+  return `
+    As an AI project management assistant, analyze the following project data and provide insights and recommendations:
+    
+    Project: ${JSON.stringify(projectData)}
+    
+    Please provide the following in JSON format:
+    1. Project risk assessment (risk level, budget overrun probability, timeline slippage probability, and recommendations)
+    2. Performance prediction (will the project meet its deadline, projected budget variance, productivity forecast)
+    3. Strategic recommendations (priority improvements, benefits of each recommendation)
+    
+    Format your response as a JSON array with these objects:
+    [
+      {
+        "type": "Warning|Critical|Positive|Informational",
+        "category": "Tasks|Budget|Timeline|General",
+        "message": "Insight message",
+        "recommendation": "Actionable recommendation"
+      }
+    ]
+  `;
+};
+
+/**
+ * Parse Gemini API response
+ * @param {String} response - Raw response from Gemini API
+ * @returns {Array} Parsed insights
+ */
+const parseGeminiResponse = (response) => {
   try {
-    // This would be an AI-based prediction in a real application
-    const completionRisk = project.progress < 50 ? 'high' : project.progress < 75 ? 'medium' : 'low';
-    const estimatedCompletion = new Date(project.completionDate);
-    
-    // Add some variance based on progress
-    if (project.progress < 30) {
-      // Add 1-3 weeks for early stage projects
-      estimatedCompletion.setDate(estimatedCompletion.getDate() + (7 + Math.floor(Math.random() * 14)));
-    } else if (project.progress < 70) {
-      // Add 0-2 weeks for mid-stage projects
-      estimatedCompletion.setDate(estimatedCompletion.getDate() + Math.floor(Math.random() * 14));
+    // Extract JSON from the response (in case there's additional text)
+    const jsonMatch = response.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
     }
     
-    return {
-      completionRisk,
-      estimatedCompletion: estimatedCompletion.toISOString().split('T')[0],
-      budgetPrediction: Math.min(100, project.progress + Math.floor(Math.random() * 15))
-    };
+    // If no JSON found, try to parse the entire response
+    return JSON.parse(response);
   } catch (error) {
-    logger.error('Error generating project predictions:', error);
-    return {
-      completionRisk: 'unknown',
-      estimatedCompletion: project.completionDate,
-      budgetPrediction: project.progress
-    };
+    logger.error('Error parsing Gemini response:', error);
+    return [
+      {
+        type: 'Informational',
+        category: 'General',
+        message: 'Unable to generate AI insights at this time.',
+        recommendation: 'Please try again later or contact support if the issue persists.'
+      }
+    ];
   }
 };
 
 /**
- * Generate cost-saving recommendations
- * @param {Object} budgetData - Budget and expense data
- * @returns {Array} Cost-saving recommendations
+ * Generate fallback insights when AI service is unavailable
+ * @param {Object} projectData - Project data to analyze
+ * @returns {Array} Fallback insights
  */
-const generateCostSavingRecommendations = (budgetData) => {
-  // This would be an AI-based analysis in a real application
-  return [
-    {
-      category: 'Infrastructure',
-      recommendation: 'Optimize cloud resource usage',
-      potentialSavings: 1200
-    },
-    {
-      category: 'Software',
-      recommendation: 'Consolidate license subscriptions',
-      potentialSavings: 800
-    },
-    {
-      category: 'Personnel',
-      recommendation: 'Improve resource allocation',
-      potentialSavings: 2500
+const generateFallbackInsights = (projectData) => {
+  const insights = [];
+  
+  // Basic project progress insight
+  if (projectData.progress) {
+    const progress = projectData.progress;
+    if (progress < 25) {
+      insights.push({
+        type: 'Informational',
+        category: 'General',
+        message: 'Project is in its early stages.',
+        recommendation: 'Ensure requirements are clear and team is aligned on objectives.'
+      });
+    } else if (progress >= 25 && progress < 50) {
+      insights.push({
+        type: 'Informational',
+        category: 'General',
+        message: 'Project is approaching the midpoint.',
+        recommendation: 'Review initial progress and adjust timeline if necessary.'
+      });
+    } else if (progress >= 50 && progress < 75) {
+      insights.push({
+        type: 'Informational',
+        category: 'General',
+        message: 'Project is past the halfway point.',
+        recommendation: 'Focus on completing critical path tasks and addressing any blockers.'
+      });
+    } else {
+      insights.push({
+        type: 'Positive',
+        category: 'General',
+        message: 'Project is nearing completion.',
+        recommendation: 'Prepare for final delivery and ensure all deliverables meet requirements.'
+      });
     }
-  ];
+  }
+  
+  // Budget insight
+  if (projectData.totalBudget && projectData.usedBudget) {
+    const budgetUsagePercentage = (projectData.usedBudget / projectData.totalBudget) * 100;
+    if (budgetUsagePercentage > 90 && (projectData.progress || 0) < 80) {
+      insights.push({
+        type: 'Critical',
+        category: 'Budget',
+        message: 'Budget usage is significantly ahead of project progress.',
+        recommendation: 'Review expenses immediately and implement cost-control measures.'
+      });
+    } else if (budgetUsagePercentage > 75 && (projectData.progress || 0) < 60) {
+      insights.push({
+        type: 'Warning',
+        category: 'Budget',
+        message: 'Budget usage is ahead of project progress.',
+        recommendation: 'Monitor expenses closely and identify potential areas for savings.'
+      });
+    }
+  }
+  
+  // Timeline insight
+  if (projectData.startDate && projectData.completionDate) {
+    const now = new Date();
+    const start = new Date(projectData.startDate);
+    const end = new Date(projectData.completionDate);
+    
+    if (end < now) {
+      insights.push({
+        type: 'Critical',
+        category: 'Timeline',
+        message: 'Project has passed its planned completion date.',
+        recommendation: 'Establish a revised timeline and communicate with stakeholders.'
+      });
+    } else {
+      const totalDuration = end.getTime() - start.getTime();
+      const elapsed = now.getTime() - start.getTime();
+      const timePercentUsed = (elapsed / totalDuration) * 100;
+      
+      if (timePercentUsed > 70 && (projectData.progress || 0) < 50) {
+        insights.push({
+          type: 'Warning',
+          category: 'Timeline',
+          message: 'Project progress is behind schedule.',
+          recommendation: 'Consider adding resources or adjusting scope to meet the deadline.'
+        });
+      }
+    }
+  }
+  
+  // Task insight
+  if (projectData.tasks) {
+    const tasks = projectData.tasks;
+    const overdueTasks = tasks.filter(task => 
+      task.status !== 'Completed' && 
+      task.dueDate && 
+      new Date(task.dueDate) < new Date()
+    );
+    
+    if (overdueTasks.length > 0) {
+      insights.push({
+        type: 'Warning',
+        category: 'Tasks',
+        message: `There are ${overdueTasks.length} overdue tasks.`,
+        recommendation: 'Prioritize overdue tasks and consider reassigning if necessary.'
+      });
+    }
+  }
+  
+  // Ensure we have at least one insight
+  if (insights.length === 0) {
+    insights.push({
+      type: 'Informational',
+      category: 'General',
+      message: 'Project appears to be progressing normally.',
+      recommendation: 'Continue regular monitoring and team check-ins.'
+    });
+  }
+  
+  return insights;
 };
 
 /**
- * Generate resource optimization suggestions
- * @param {Array} teamData - Team utilization data
- * @returns {Object} Resource optimization recommendations
+ * Generate a project summary
+ * @param {Object} projectData - Project data to summarize
+ * @returns {String} Project summary
  */
-const generateResourceOptimizationSuggestions = (teamData) => {
-  // This would be an AI-based analysis in a real application
-  const overallocatedMembers = teamData
-    .filter(member => member.assignedTasksCount > 10 || member.projectsCount > 2)
-    .map(member => member.name);
+const generateProjectSummary = async (projectData) => {
+  try {
+    // If Gemini is not available, return fallback summary
+    if (!genAI) {
+      logger.debug('Using fallback project summary generation');
+      return generateFallbackProjectSummary(projectData);
+    }
+
+    // Get a model instance with the correct model name
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+    const prompt = `
+      Generate a concise summary (max 2 paragraphs) for this project:
+      Project Name: ${projectData.name}
+      Progress: ${projectData.progress || 0}%
+      Budget: $${projectData.totalBudget || 0} (${projectData.budgetUtilization || 0}% utilized)
+      Status: ${projectData.status || 'Unknown'}
+      Start Date: ${projectData.startDate ? new Date(projectData.startDate).toLocaleDateString() : 'Not set'}
+      Completion Date: ${projectData.completionDate ? new Date(projectData.completionDate).toLocaleDateString() : 'Not set'}
+      Description: ${projectData.description || 'No description provided'}
+      
+      Include current status, progress assessment, budget utilization, and timeline projection.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text();
+  } catch (error) {
+    logger.error('Error generating project summary:', error);
+    return generateFallbackProjectSummary(projectData);
+  }
+};
+
+/**
+ * Generate fallback project summary when AI service is unavailable
+ * @param {Object} projectData - Project data to summarize
+ * @returns {String} Fallback project summary
+ */
+const generateFallbackProjectSummary = (projectData) => {
+  const progress = projectData.progress || 0;
+  const status = projectData.status || 'Unknown';
+  const budgetUtilization = projectData.budgetUtilization || 0;
   
-  const underutilizedMembers = teamData
-    .filter(member => member.assignedTasksCount < 3 && member.projectsCount < 2)
-    .map(member => member.name);
+  const completionDate = projectData.completionDate 
+    ? new Date(projectData.completionDate).toLocaleDateString() 
+    : 'unspecified date';
   
-  return {
-    overallocatedMembers,
-    underutilizedMembers,
-    recommendation: "Redistribute tasks to balance workload across team members."
-  };
+  let timelineAssessment = 'on track';
+  if (projectData.timelineStatus === 'Behind Schedule') {
+    timelineAssessment = 'behind schedule';
+  } else if (projectData.timelineStatus === 'Ahead of Schedule') {
+    timelineAssessment = 'ahead of schedule';
+  }
+  
+  let budgetAssessment = 'within budget';
+  if (budgetUtilization > 90) {
+    budgetAssessment = 'near budget limits';
+  } else if (budgetUtilization > 100) {
+    budgetAssessment = 'over budget';
+  }
+  
+  return `The ${projectData.name} project is currently ${progress}% complete with a status of "${status}". It is ${timelineAssessment} to meet its ${completionDate} deadline and is ${budgetAssessment} with ${budgetUtilization}% of the total budget utilized.`;
 };
 
 module.exports = {
   generateAIInsights,
-  generateProjectPredictions,
-  generateCostSavingRecommendations,
-  generateResourceOptimizationSuggestions
+  generateProjectSummary
 }; 
