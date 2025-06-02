@@ -1,7 +1,7 @@
 // src/config/db.js
 require('dotenv').config()
 
-const { Sequelize, DataTypes } = require('sequelize')
+const { Sequelize, DataTypes } = require('sequelize');
 
 const {
   DB_NAME     = 'budget_project_db',
@@ -9,24 +9,55 @@ const {
   DB_PASSWORD = '1122',
   DB_HOST     = 'localhost',
   DB_PORT     = 5432,
-  NODE_ENV    = 'development'
-} = process.env
+  NODE_ENV    = 'development',
+  DATABASE_URL = 'postgresql://postgres:1122@localhost:5432/budget_project_db' // For Railway or other providers that give a single URL
+} = process.env;
 
-const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
-  host:     DB_HOST,
-  port:     parseInt(DB_PORT, 10),
-  dialect:  'postgres',
-  logging:  NODE_ENV === 'development' ? console.log : false,
-  pool: {
-    max:     5,
-    min:     0,
-    acquire: 30_000,
-    idle:    10_000
-  },
-  retry: {
-    max: 3
-  }
-})
+let sequelize;
+
+if (DATABASE_URL && NODE_ENV !== 'development') { // Prefer DATABASE_URL in production if available
+  sequelize = new Sequelize(DATABASE_URL, {
+    dialect: 'postgres',
+    logging: false, // Usually disable detailed logging in prod
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false // This may be needed depending on the provider
+      }
+    },
+    pool: {
+      max:     5,
+      min:     0,
+      acquire: 30000,
+      idle:    10000
+    },
+    retry: {
+      max: 3
+    }
+  });
+} else { // Fallback to individual variables or for development
+  sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
+    host:     DB_HOST,
+    port:     parseInt(DB_PORT, 10),
+    dialect:  'postgres',
+    logging:  NODE_ENV === 'development' ? console.log : false,
+    dialectOptions: NODE_ENV !== 'development' ? { // Add SSL for non-development if not using DATABASE_URL
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    } : {},
+    pool: {
+      max:     5,
+      min:     0,
+      acquire: 30000,
+      idle:    10000
+    },
+    retry: {
+      max: 3
+    }
+  });
+}
 
 /**
  * Try to authenticate up to `retries` times before throwing.
