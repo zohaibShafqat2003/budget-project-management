@@ -2,6 +2,39 @@ import { refreshAccessToken } from "./auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
+// Simple in-memory cache
+const cache = {
+  data: new Map<string, { data: any; timestamp: number }>(),
+  // Cache duration in milliseconds (5 minutes)
+  cacheDuration: 5 * 60 * 1000,
+  
+  get(key: string): any {
+    const cachedItem = this.data.get(key);
+    if (!cachedItem) return null;
+    
+    const now = Date.now();
+    if (now - cachedItem.timestamp > this.cacheDuration) {
+      // Cache expired
+      this.data.delete(key);
+      return null;
+    }
+    
+    return cachedItem.data;
+  },
+  
+  set(key: string, data: any): void {
+    this.data.set(key, { data, timestamp: Date.now() });
+  },
+  
+  invalidate(key: string): void {
+    this.data.delete(key);
+  },
+  
+  invalidateAll(): void {
+    this.data.clear();
+  }
+};
+
 const handleResponse = async (response: Response) => {
   try {
     const data = await response.json().catch(() => ({}));
@@ -34,8 +67,18 @@ const apiRequest = async (
   endpoint: string, 
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET', 
   body?: any,
-  customHeaders: Record<string, string> = {}
+  customHeaders: Record<string, string> = {},
+  useCache: boolean = false
 ) => {
+  // For GET requests, check cache first
+  const cacheKey = `${endpoint}-${method}-${body ? JSON.stringify(body) : ''}`;
+  if (method === 'GET' && useCache) {
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      return cachedData;
+    }
+  }
+
   let token = '';
   if (typeof window !== 'undefined') {
     token = localStorage.getItem('authToken') || '';
@@ -61,7 +104,14 @@ const apiRequest = async (
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-  return handleResponse(response);
+  const responseData = await handleResponse(response);
+  
+  // Cache successful GET responses
+  if (method === 'GET' && useCache && responseData.success) {
+    cache.set(cacheKey, responseData);
+  }
+  
+  return responseData;
 };
 
 // Authentication API services
@@ -505,23 +555,47 @@ export const expenseApi = {
 
 // Reports API services
 export const reportApi = {
-  getProjectSummary: async () => {
-    return apiRequest('/reports/projects');
+  getProjectSummary: async (forceRefresh: boolean = false) => {
+    if (forceRefresh) {
+      cache.invalidate('/reports/projects-GET-');
+    }
+    return apiRequest('/reports/projects', 'GET', undefined, {}, true);
   },
   
-  getBudgetAnalysis: async () => {
-    return apiRequest('/reports/budget');
+  getBudgetAnalysis: async (forceRefresh: boolean = false) => {
+    if (forceRefresh) {
+      cache.invalidate('/reports/budget-GET-');
+    }
+    return apiRequest('/reports/budget', 'GET', undefined, {}, true);
   },
   
-  getTeamPerformance: async () => {
-    return apiRequest('/reports/team');
+  getTeamPerformance: async (forceRefresh: boolean = false) => {
+    if (forceRefresh) {
+      cache.invalidate('/reports/team-GET-');
+    }
+    return apiRequest('/reports/team', 'GET', undefined, {}, true);
   },
   
-  getAIInsights: async () => {
-    return apiRequest('/reports/ai-insights');
+  getAIInsights: async (forceRefresh: boolean = false) => {
+    if (forceRefresh) {
+      cache.invalidate('/reports/ai-insights-GET-');
+    }
+    return apiRequest('/reports/ai-insights', 'GET', undefined, {}, true);
   },
   
-  exportReport: async (data: { reportType: string; format: string }) => {
+  getProjectComprehensiveReport: async (projectId: string, forceRefresh: boolean = false) => {
+    const endpoint = `/reports/projects/${projectId}/comprehensive`;
+    if (forceRefresh) {
+      cache.invalidate(`${endpoint}-GET-`);
+    }
+    return apiRequest(endpoint, 'GET', undefined, {}, true);
+  },
+  
+  exportReport: async (data: { reportType: string; format: string; projectId?: string }) => {
     return apiRequest('/reports/export', 'POST', data);
+  },
+  
+  clearCache: () => {
+    cache.invalidateAll();
   }
-}; 
+};

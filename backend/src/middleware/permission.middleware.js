@@ -5,11 +5,11 @@ const { User } = require('../models');
  * Permission matrix defining which roles have access to which resources and actions
  */
 const permissionMatrix = {
-  admin: {
+  'Admin': {
     // Admins have access to all resources and actions
     '*': ['*']
   },
-  manager: {
+  'Product Owner': {
     projects: ['read', 'create', 'update', 'delete'],
     tasks: ['read', 'create', 'update', 'delete'],
     users: ['read'],
@@ -18,7 +18,16 @@ const permissionMatrix = {
     expenses: ['read', 'create', 'update', 'delete', 'approve', 'reject'],
     reports: ['read', 'export']
   },
-  developer: {
+  'Scrum Master': {
+    projects: ['read', 'create', 'update'],
+    tasks: ['read', 'create', 'update', 'delete'],
+    users: ['read'],
+    clients: ['read'],
+    budgets: ['read', 'create', 'update'],
+    expenses: ['read', 'create', 'update', 'approve', 'reject'],
+    reports: ['read', 'export']
+  },
+  'Developer': {
     projects: ['read'],
     tasks: ['read', 'update'],
     users: ['read'],
@@ -27,7 +36,7 @@ const permissionMatrix = {
     expenses: ['read', 'create'],
     reports: ['read']
   },
-  viewer: {
+  'Viewer': {
     projects: ['read'],
     tasks: ['read'],
     users: ['read'],
@@ -58,7 +67,7 @@ const checkUserPermission = (resource, action) => {
       }
       
       // Get user role
-      const role = user.role || 'viewer';
+      const role = user.role || 'Viewer';
       
       // Check if role exists in permission matrix
       if (!permissionMatrix[role]) {
@@ -70,7 +79,7 @@ const checkUserPermission = (resource, action) => {
       }
       
       // Admin has access to everything
-      if (role === 'admin') {
+      if (role === 'Admin') {
         return next();
       }
       

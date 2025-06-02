@@ -2,22 +2,27 @@
 require('dotenv').config();
 
 // 1) Direct import of database configuration 
-const { sequelize, DataTypes } = require('./src/config/db');
+const { sequelize } = require('./src/config/db'); // DataTypes may not be needed directly here anymore
 
 // 2) Import models by passing (sequelize, DataTypes)
-const User          = require('./src/models/User')(sequelize, DataTypes);
-const Project       = require('./src/models/Project')(sequelize, DataTypes);
-const Client        = require('./src/models/Client')(sequelize, DataTypes);
-const BudgetItem    = require('./src/models/BudgetItem')(sequelize, DataTypes);
-const Expense       = require('./src/models/Expense')(sequelize, DataTypes);
-const ProjectMember = require('./src/models/ProjectMember')(sequelize, DataTypes);
+// Import models used directly by seed.js for bulkCreate from models/index.js
+// models/index.js handles their definitions and associations.
+const {
+  User,
+  Project,
+  Client,
+  BudgetItem, // Assuming used for bulkCreate later in this file
+  Expense,    // Assuming used for bulkCreate later in this file
+  ProjectMember
+} = require('./src/models');
+// Note: Board, Sprint, Story, Task, Epic are not imported here at the top level of seed.js
+// because seedProjectData (imported next) handles its own model imports from ../models.
 
-// 3) If any model files define associations via .associate, invoke them here
-Object.values({ User, Project, Client, BudgetItem, Expense, ProjectMember }).forEach(model => {
-  if (typeof model.associate === 'function') {
-    model.associate({ User, Project, Client, BudgetItem, Expense, ProjectMember });
-  }
-});
+// Import the new seeder function
+const seedProjectData = require('./src/seeders/seedProject');
+
+// Associations are defined and handled by models/index.js.
+// The loop that called model.associate() has been removed to prevent conflicts.
 
 (async () => {
   try {
@@ -966,6 +971,11 @@ Object.values({ User, Project, Client, BudgetItem, Expense, ProjectMember }).for
     ];
     await ProjectMember.bulkCreate(projectMembersData);
     console.log('✅ Project members created.');
+
+    console.log('>>> Calling seedProjectData from seed.js...');
+    // Seed the detailed project with board, sprint, stories, tasks, epic
+    await seedProjectData();
+    console.log('<<< Returned from seedProjectData in seed.js.');
 
     console.log('🎉 Seed script completed successfully!');
     process.exit(0);

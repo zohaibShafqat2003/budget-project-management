@@ -36,9 +36,19 @@ const validationRules = {
   id: param('id').isUUID().withMessage('Invalid ID format'),
   
   // Report validation
+  // Report validation
   reportExport: [
     body('reportType').isString().notEmpty().withMessage('Report type is required'),
-    body('format').isString().notEmpty().isIn(['pdf', 'csv', 'excel']).withMessage('Valid format is required (pdf, csv, excel)')
+    body('format').isString().notEmpty().isIn(['pdf', 'csv', 'excel']).withMessage('Valid format is required (pdf, csv, excel)'),
+    body('projectId')
+      .optional()
+      .isUUID().withMessage('Valid project ID is required for comprehensive reports')
+      .custom((value, { req }) => {
+        if (req.body.reportType === 'comprehensive' && !value) {
+          throw new Error('Project ID is required for comprehensive reports');
+        }
+        return true;
+      })
   ],
   
   // Project validation
@@ -59,4 +69,4 @@ const validationRules = {
 module.exports = {
   validateRequest,
   validationRules
-}; 
+};

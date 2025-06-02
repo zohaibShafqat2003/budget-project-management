@@ -76,6 +76,9 @@ Board.belongsTo(Project, { as: 'project', foreignKey: 'projectId' });
 Board.hasMany(Sprint, { as: 'sprints', foreignKey: 'boardId' });
 Sprint.belongsTo(Board, { as: 'board', foreignKey: 'boardId' });
 
+// Note: Project and Sprint are related indirectly through Board
+// Direct association is handled in the controller
+
 // Sprint - Owner (Many-to-One)
 User.hasMany(Sprint, { as: 'ownedSprints', foreignKey: 'ownerId' });
 Sprint.belongsTo(User, { as: 'owner', foreignKey: 'ownerId' });

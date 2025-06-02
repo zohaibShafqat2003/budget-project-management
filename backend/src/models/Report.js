@@ -11,14 +11,15 @@ module.exports = (sequelize) => {
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: 'Users',
+        model: 'Users', 
         key: 'id'
       }
     },
     projectId: {
       type: DataTypes.UUID,
+      allowNull: true, 
       references: {
-        model: 'Projects',
+        model: 'Projects', 
         key: 'id'
       },
       comment: 'If null, this is a global report'
@@ -69,7 +70,10 @@ module.exports = (sequelize) => {
       type: DataTypes.DATE
     }
   }, {
+    tableName: 'Reports', 
     timestamps: true,
+    paranoid: true, 
+    deletedAt: 'deletedAt', 
     indexes: [
       { fields: ['userId'] },
       { fields: ['projectId'] },

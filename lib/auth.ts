@@ -434,3 +434,70 @@ export function isAuthenticated(): boolean {
   
   return true;
 }
+
+/**
+ * Get authentication headers for API requests
+ * @returns Headers object with Authorization header
+ */
+export function getAuthHeaders(): HeadersInit {
+  const token = localStorage.getItem('authToken');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': token ? `Bearer ${token}` : ''
+  };
+}
+
+/**
+ * Download a file with authentication
+ * @param url URL to download from
+ * @param filename Filename to save as
+ * @returns Promise resolving to true if download was successful
+ */
+export async function downloadWithAuth(url: string, filename: string): Promise<boolean> {
+  try {
+    if (typeof window === 'undefined') {
+      console.error("Cannot download in a non-browser environment.");
+      return false;
+    }
+    
+    // Get the authentication token
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      console.error("No authentication token found—user probably isn't logged in.");
+      return false;
+    }
+    
+    // Make authenticated request to download the file
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv'
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`Download failed: ${response.status}`, await response.text());
+      return false;
+    }
+    
+    // Convert to blob and trigger download
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    // Clean up
+    URL.revokeObjectURL(objectUrl);
+    
+    return true;
+  } catch (error) {
+    console.error('Error downloading file:', error);
+    return false;
+  }
+}

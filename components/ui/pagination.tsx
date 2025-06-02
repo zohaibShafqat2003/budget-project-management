@@ -1,160 +1,120 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
-import { Button } from './button';
+import * as React from "react"
+import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react"
 
-interface PaginationProps {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
-  maxDisplayedPages?: number;
-}
+import { cn } from "@/lib/utils"
+import { ButtonProps, buttonVariants } from "@/components/ui/button"
 
-export function Pagination({
-  currentPage,
-  totalPages,
-  onPageChange,
-  maxDisplayedPages = 5
-}: PaginationProps) {
-  // If we have fewer pages than the max display amount, show all pages
-  if (totalPages <= maxDisplayedPages) {
-    return (
-      <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-          disabled={currentPage === 1}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        
-        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-          <Button
-            key={page}
-            variant={currentPage === page ? "default" : "outline"}
-            size="icon"
-            onClick={() => onPageChange(page)}
-          >
-            {page}
-          </Button>
-        ))}
-        
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-          disabled={currentPage === totalPages}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-    );
-  }
-  
-  // If we have more pages than the max display amount, show a subset with ellipses
-  const siblingCount = Math.floor((maxDisplayedPages - 3) / 2); // 3 accounts for first, last, and current page
-  
-  let startPage = Math.max(1, currentPage - siblingCount);
-  let endPage = Math.min(totalPages, currentPage + siblingCount);
-  
-  // Adjust if we're at the start or end
-  if (currentPage <= siblingCount + 1) {
-    endPage = Math.min(totalPages, maxDisplayedPages - 1);
-  } else if (currentPage >= totalPages - siblingCount) {
-    startPage = Math.max(1, totalPages - maxDisplayedPages + 2);
-  }
-  
-  const pages = [];
-  
-  // Add first page
-  pages.push(
-    <Button
-      key={1}
-      variant={currentPage === 1 ? "default" : "outline"}
-      size="icon"
-      onClick={() => onPageChange(1)}
-    >
-      1
-    </Button>
-  );
-  
-  // Add ellipsis if needed
-  if (startPage > 2) {
-    pages.push(
-      <Button
-        key="start-ellipsis"
-        variant="outline"
-        size="icon"
-        disabled
-      >
-        <MoreHorizontal className="h-4 w-4" />
-      </Button>
-    );
-  }
-  
-  // Add middle pages
-  for (let i = Math.max(2, startPage); i <= Math.min(endPage, totalPages - 1); i++) {
-    pages.push(
-      <Button
-        key={i}
-        variant={currentPage === i ? "default" : "outline"}
-        size="icon"
-        onClick={() => onPageChange(i)}
-      >
-        {i}
-      </Button>
-    );
-  }
-  
-  // Add ellipsis if needed
-  if (endPage < totalPages - 1) {
-    pages.push(
-      <Button
-        key="end-ellipsis"
-        variant="outline"
-        size="icon"
-        disabled
+const Pagination = ({
+  className,
+  ...props
+}: React.ComponentProps<"nav">) => (
+  <nav
+    role="navigation"
+    aria-label="pagination"
+    className={cn("mx-auto flex w-full justify-center", className)}
+    {...props}
+  />
+)
+Pagination.displayName = "Pagination"
+
+const PaginationContent = React.forwardRef<
+  HTMLUListElement,
+  React.ComponentProps<"ul">
+>(({ className, ...props }, ref) => (
+  <ul
+    ref={ref}
+    className={cn("flex flex-row items-center gap-1", className)}
+    {...props}
+  />
+))
+PaginationContent.displayName = "PaginationContent"
+
+const PaginationItem = React.forwardRef<
+  HTMLLIElement,
+  React.ComponentProps<"li">
+>(({ className, ...props }, ref) => (
+  <li ref={ref} className={cn("", className)} {...props} />
+))
+PaginationItem.displayName = "PaginationItem"
+
+type PaginationLinkProps = {
+  isActive?: boolean
+} & Pick<ButtonProps, "size"> &
+  React.ComponentProps<"a">
+
+const PaginationLink = ({
+  className,
+  isActive,
+  size = "icon",
+  ...props
+}: PaginationLinkProps) => (
+  <a
+    aria-current={isActive ? "page" : undefined}
+    className={cn(
+      buttonVariants({
+        variant: isActive ? "outline" : "ghost",
+        size,
+      }),
+      className
+    )}
+    {...props}
+  />
+)
+PaginationLink.displayName = "PaginationLink"
+
+const PaginationPrevious = ({
+  className,
+  ...props
+}: React.ComponentProps<typeof PaginationLink>) => (
+  <PaginationLink
+    aria-label="Go to previous page"
+    size="default"
+    className={cn("gap-1 pl-2.5", className)}
+    {...props}
+  >
+    <ChevronLeft className="h-4 w-4" />
+    <span>Previous</span>
+  </PaginationLink>
+)
+PaginationPrevious.displayName = "PaginationPrevious"
+
+const PaginationNext = ({
+  className,
+  ...props
+}: React.ComponentProps<typeof PaginationLink>) => (
+  <PaginationLink
+    aria-label="Go to next page"
+    size="default"
+    className={cn("gap-1 pr-2.5", className)}
+    {...props}
+  >
+    <span>Next</span>
+    <ChevronRight className="h-4 w-4" />
+  </PaginationLink>
+)
+PaginationNext.displayName = "PaginationNext"
+
+const PaginationEllipsis = ({
+  className,
+  ...props
+}: React.ComponentProps<"span">) => (
+  <span
+    aria-hidden
+    className={cn("flex h-9 w-9 items-center justify-center", className)}
+    {...props}
   >
     <MoreHorizontal className="h-4 w-4" />
-      </Button>
-    );
-  }
-  
-  // Add last page if we have more than one page
-  if (totalPages > 1) {
-    pages.push(
-      <Button
-        key={totalPages}
-        variant={currentPage === totalPages ? "default" : "outline"}
-        size="icon"
-        onClick={() => onPageChange(totalPages)}
-      >
-        {totalPages}
-      </Button>
-    );
-  }
-  
-  return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-        disabled={currentPage === 1}
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      
-      {pages}
-      
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-        disabled={currentPage === totalPages}
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
-    </div>
-  );
+    <span className="sr-only">More pages</span>
+  </span>
+)
+PaginationEllipsis.displayName = "PaginationEllipsis"
+
+export {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
 }
